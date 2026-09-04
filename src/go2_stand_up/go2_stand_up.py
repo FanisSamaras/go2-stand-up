@@ -15,6 +15,12 @@ def patched_imu_init(self, mj_model, mj_data, *args, **kwargs):
 
 IMU.__init__ = patched_imu_init
 
+def _compute_reward(self):
+
+    ...
+
+QuadrupedEnv._compute_reward = _compute_reward
+
 FULL_STATE_OBS = (
     "base_pos",
     "base_ori_quat_wxyz",
