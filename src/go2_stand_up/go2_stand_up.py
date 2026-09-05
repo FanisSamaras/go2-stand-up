@@ -3,6 +3,7 @@ from gym_quadruped.sensors.imu import IMU
 import mujoco
 import numpy as np
 import torch
+from numpy.typing import NDArray
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -16,8 +17,7 @@ def patched_imu_init(self, mj_model, mj_data, *args, **kwargs):
 IMU.__init__ = patched_imu_init
 
 def _compute_reward(self):
-
-    ...
+    return 1
 
 QuadrupedEnv._compute_reward = _compute_reward
 
@@ -61,18 +61,48 @@ env = QuadrupedEnv(
     state_obs_names=state_obs_name,
     sensors=(IMU,),
     sensors_kwargs=(imu_kwargs,),
+    legs_order=("FL","FR","RL","RR")
 )
 
 obs = env.reset()
 
 episode_reward = 0.0
 
+class PIDController:
+    '''
+    Simple PID controller based around a single q_nominal position trying to stabilize around this position
+    \n Leg order FL, FR, RL, RR
+    '''
+    def __init__(self) -> None:
+        self.q_nominal = np.array([0.0, 0.9, -1.8, #FL                          
+                                   0.0, 0.9, -1.8, #FR
+                                   0.0, 0.9, -1.8, #RL
+                                   0.0, 0.9, -1.8] #RR
+                                   ,dtype=np.float32)
+        self.kp = np.array([20,35,45] * 4, dtype=np.float32)
+        self.kd = np.sqrt(self.kp)
+
+    def get_action(self,q,dq) -> NDArray:
+        action = self.kp * (self.q_nominal - q) - self.kd * dq
+        return action
+        
+
 for t in range(1000):
 
-    action = env.action_space.sample()
+    # action = env.action_space.sample()
+
+    pid_controller = PIDController()
+
+    q = env.mjData.qpos[7:19]
+    dq = env.mjData.qvel[6:18]
+
+    action = pid_controller.get_action(q=q,dq=dq)
 
     obs, reward, terminated, truncated, info = env.step(action)
+
     episode_reward += reward
+
+    env.render()
 
     if terminated or truncated:
         break
