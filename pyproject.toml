@@ -4,11 +4,13 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
-    { name = "FanisSamaras", email = "fanissamaras1@gmail.com" }
+    { name = "FanisSamaras", email = "fanissamaras1@gmail.com" },
+    { name = "ManosDrakos", email = "drakomanios@gmail.com" }
 ]
 requires-python = ">=3.14"
 dependencies = [
     "gym-quadruped>=1.1.5",
+    "matplotlib>=3.11.1",
     "mujoco>=3.12.0",
     "numpy>=2.5.2",
     "torch>=2.14.0",
