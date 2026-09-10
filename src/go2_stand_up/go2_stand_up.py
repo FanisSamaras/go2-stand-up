@@ -43,9 +43,27 @@ class NewEnv(QuadrupedEnv):
         return numerator/denumerator
 
     def _compute_reward(self):
+        # stationary 
+        lin_vel_err_B = self.base_lin_vel_err(frame="base")
+        ang_vel_err_B = self.base_ang_vel_err(frame="base")
+        sigma_lin_vel = 0.25
+        sigma_ang_vel = 0.25
+        tracking_lin_vel = np.exp(-np.sum(lin_vel_err_B[:2] ** 2) / (2 * sigma_lin_vel **2))
+        tracking_yaw_rate = np.exp(-(ang_vel_err_B[2] ** 2) / (2 * sigma_ang_vel **2))
 
-        linear_velocity_error = env.base_lin_vel_err(frame="base")
-        angular_velocity_error = env.base_ang_vel_err(frame="base")
+        # left-right rotation 
+        base_lin_vel_B = self.base_lin_vel(frame="base")
+        z_vel_penalty = base_lin_vel_B[2] ** 2
+
+        # "kebab" rotation 
+        base_ang_vel_B = self.base_ang_vel(frame="base")
+        roll_pitch_ang_vel_penalty = np.sum(base_ang_vel_B[:2] ** 2)
+
+        # high torque penalty
+        tau = self.torque_ctrl_setpoint
+        torque_penalty = np.sum(tau **2)
+
+        # correct legs contact
         leg_contacts, contact_positions = env.feet_contact_state(frame="base",ground_reaction_forces=False)
         leg_contacts = leg_contacts.to_list()
         contact_count = sum(leg_contacts)
@@ -68,10 +86,14 @@ class NewEnv(QuadrupedEnv):
             # print("not in contact")
 
         return (
-            1 * np.linalg.norm(linear_velocity_error) +
-            1 * np.linalg.norm(angular_velocity_error) +
+            1 + # alive bonus MAYBE
+            1 * tracking_lin_vel +
+            1 * tracking_yaw_rate +
             -1 * feet_contact_penalty +
-            -1 * com_offset
+            -1 * com_offset +
+            -1 * z_vel_penalty + # MAYBE
+            -1 * roll_pitch_ang_vel_penalty + # MAYBE
+            -1 * torque_penalty # MAYBE
             )
     
 
