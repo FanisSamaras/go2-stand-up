@@ -62,8 +62,10 @@ class NewEnv(QuadrupedEnv):
         ang_vel = self.base_ang_vel(frame="base")[:2]
         sigma_lin_vel = 0.25
         sigma_ang_vel = 0.25
-        lin_vel_penalty = np.exp(-np.sum(lin_vel ** 2)/ (2 * sigma_lin_vel ** 2))
-        ang_vel_penalty = np.exp(-np.sum(ang_vel ** 2)/ (2 * sigma_ang_vel ** 2))
+        lin_vel_reward = np.exp(-np.sum(lin_vel ** 2)/ (2 * sigma_lin_vel ** 2))
+        ang_vel_reward = np.exp(-np.sum(ang_vel ** 2)/ (2 * sigma_ang_vel ** 2))
+        height = self.com[2]
+        height_penalty = 1 if height < 0.31 else 0
 
 
         # left-right rotation 
@@ -117,8 +119,8 @@ class NewEnv(QuadrupedEnv):
         print(f"first_foot_contact_reward: {0.25 * first_foot_contact_reward} |"
               f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|"
               f"super_deluxe_reward_special: {4 * super_deluxe_reward_special}|"
-              f"lin_vel_penalty: {0.5 * lin_vel_penalty}|"
-              f"lin_ang_penalty: {0.5 * ang_vel_penalty}|"
+              f"lin_vel_penalty: {0.5 * lin_vel_reward}|"
+              f"lin_ang_penalty: {0.5 * ang_vel_reward}|"
               f"center_of_mass_reward: {-1.0 * center_of_mass_reward}|"
               f"feet_contact_penalty: {-2.0 * feet_contact_penalty}|"
               f"z_vel_penalty: {-0.1 * z_vel_penalty}|"
@@ -128,10 +130,11 @@ class NewEnv(QuadrupedEnv):
         return float(
             0.25 * first_foot_contact_reward +
             0.25 * second_foot_contact_reward + 
-            4.0 * super_deluxe_reward_special +
-            0.5 * lin_vel_penalty +
-            0.5 * ang_vel_penalty +
+            5.0 * super_deluxe_reward_special +
+            0.7 * lin_vel_reward +
+            0.8 * ang_vel_reward +
             1.0 * center_of_mass_reward +
+            -1.0 * height_penalty +
             -2.0 * feet_contact_penalty +
             -0.1 * z_vel_penalty + # MAYBE
             -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
