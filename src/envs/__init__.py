@@ -45,6 +45,7 @@ def create_env(scene:str = "flat", state_obs_names:str = "full_state")->NewEnv:
         robot="go2",
         scene=scene,
         state_obs_names=state_obs_name,
+        base_vel_command_type="human",
         sensors=(PatchedIMU,),
         sensors_kwargs=(imu_kwargs,),
         legs_order=("FL","FR","RL","RR")

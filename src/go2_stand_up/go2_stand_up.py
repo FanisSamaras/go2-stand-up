@@ -33,7 +33,7 @@ MAX_STEPS = 2_000_000
 EPISODE_LENGTH = 1000
 SAVE_INTERVAL = 50_000
 
-action_scale = 0
+action_scale = 0.5
 
 agent = PPO(
     obs_dim=OBS_DIM,
@@ -135,13 +135,13 @@ def train():
             )
 
         if step % SAVE_INTERVAL == 0:
-            checkpoint_path = f"./policies/checkpoint/ppo_go2_step_{step}.pt"
+            checkpoint_path = f"./src/policies/checkpoint/ppo_go2_step_{step}.pt"
             agent.save(checkpoint_path)
             print(f"[Checkpoint] Saved for steps {step}")
 
 def load_test():
     time = 0
-    agent.load("./policies/checkpoint/ppo_go2_step_500000.pt")
+    agent.load("./src/policies/checkpoint/ppo_go2_step_200000.pt")
     obs = flatten_obs(env.reset())
     for _ in range(1,2000*5+1):
         rl_action, log_prob, value = agent.select_action(obs)

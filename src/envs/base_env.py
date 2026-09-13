@@ -46,18 +46,25 @@ class NewEnv(QuadrupedEnv):
         y2 = p2[1]
 
         numerator = abs((y2-y1)*p3[0] - (x2-x1)*p3[1] + x2*y1 - y2*x1)
-        denumerator = ((y2-y1)**2 + (x2-x1)**2)**0.5
+        denominator = ((y2-y1)**2 + (x2-x1)**2)**0.5
 
-        return numerator/denumerator
+        return numerator/denominator
 
     def _compute_reward(self):
         # stationary 
-        lin_vel_err_B = self.base_lin_vel_err(frame="base")
-        ang_vel_err_B = self.base_ang_vel_err(frame="base")
+        # lin_vel_err_B = self.base_lin_vel_err(frame="base")
+        # ang_vel_err_B = self.base_ang_vel_err(frame="base")
+        # sigma_lin_vel = 0.25
+        # sigma_ang_vel = 0.25
+        # tracking_lin_vel = np.exp(-np.sum(lin_vel_err_B[:2] ** 2) / (2 * sigma_lin_vel **2))
+        # tracking_yaw_rate = np.exp(-(ang_vel_err_B[2] ** 2) / (2 * sigma_ang_vel **2))
+        lin_vel = self.base_lin_vel(frame="base")[:2]
+        ang_vel = self.base_ang_vel(frame="base")[:2]
         sigma_lin_vel = 0.25
         sigma_ang_vel = 0.25
-        tracking_lin_vel = np.exp(-np.sum(lin_vel_err_B[:2] ** 2) / (2 * sigma_lin_vel **2))
-        tracking_yaw_rate = np.exp(-(ang_vel_err_B[2] ** 2) / (2 * sigma_ang_vel **2))
+        lin_vel_penalty = np.exp(-np.sum(lin_vel ** 2)/ (2 * sigma_lin_vel ** 2))
+        ang_vel_penalty = np.exp(-np.sum(ang_vel ** 2)/ (2 * sigma_ang_vel ** 2))
+
 
         # left-right rotation 
         base_lin_vel_B = self.base_lin_vel(frame="base")
@@ -77,9 +84,19 @@ class NewEnv(QuadrupedEnv):
         contact_count = sum(leg_contacts)
         feet_contact_penalty = 0
         com_offset = 1
-        # print((contact_count !=2) ,(not leg_contacts[self.leg_pair[0]]),(not leg_contacts[self.leg_pair[1]]))
+        first_foot_contact_reward = 0.0
+        second_foot_contact_reward = 0.0
+        super_deluxe_reward_special = 0.0
+        # print((contact_count !=2) ,(not leg_contacts[self.leg_pair[0]]),(not leg_contacts[self.leg_pair[1]]))        
+        if leg_contacts[self.leg_pair[0]]:
+            first_foot_contact_reward = 1.0
+        if leg_contacts[self.leg_pair[1]]:
+            second_foot_contact_reward = 1.0
+        if first_foot_contact_reward and second_foot_contact_reward and (contact_count == 2):
+            super_deluxe_reward_special = 1.0
         if (contact_count!= 2) or (not leg_contacts[self.leg_pair[0]]) or (not leg_contacts[self.leg_pair[1]]):
-            feet_contact_penalty = 1
+            if contact_count == 3: feet_contact_penalty = 0.5
+            if contact_count == 4: feet_contact_penalty = 1.0
         else:
             com_xy = self.com[0:2]
             contact_point2D_1 = contact_positions["FL"] # fix
@@ -88,17 +105,19 @@ class NewEnv(QuadrupedEnv):
             contact_point2D_1 = contact_point2D_1[0].pos[0:2]
             # print(contact_point2D_1)
             contact_point2D_2 = contact_point2D_2[0].pos[0:2]
-            com_offset = 1 / (self.distance_from_line_2D(contact_point2D_1,contact_point2D_2,com_xy) + 1e-5)
-            # except:
-            # com_offset = 1
-            # print("not in contact")
+            com_offset = self.distance_from_line_2D(contact_point2D_1,contact_point2D_2,com_xy)
+        # except:
+        # com_offset = 1
+        # print("not in contact")
 
-        return (
-            1.0 + # alive bonus MAYBE
-            # 1 * tracking_lin_vel +
-            0.3 * tracking_yaw_rate +
-            1.0 * com_offset +
-            -5.0 * feet_contact_penalty +
+        return float(
+            0.25 * first_foot_contact_reward +
+            0.25 * second_foot_contact_reward + 
+            2.0 * super_deluxe_reward_special +
+            -0.5 * lin_vel_penalty
+            -0.5 * ang_vel_penalty
+            -1.0 * com_offset +
+            -2.0 * feet_contact_penalty +
             -0.1 * z_vel_penalty + # MAYBE
             -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
             -1e-4 * torque_penalty # MAYBE
