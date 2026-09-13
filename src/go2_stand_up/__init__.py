@@ -1,2 +1,5 @@
+from .go2_stand_up import train, env
+
 def main() -> None:
-    print("Hello from go2-stand-up!")
+    train()
+    env.close()

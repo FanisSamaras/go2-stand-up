@@ -88,20 +88,20 @@ class NewEnv(QuadrupedEnv):
             contact_point2D_1 = contact_point2D_1[0].pos[0:2]
             # print(contact_point2D_1)
             contact_point2D_2 = contact_point2D_2[0].pos[0:2]
-            com_offset = self.distance_from_line_2D(contact_point2D_1,contact_point2D_2,com_xy)
+            com_offset = 1 / (self.distance_from_line_2D(contact_point2D_1,contact_point2D_2,com_xy) + 1e-5)
             # except:
             # com_offset = 1
             # print("not in contact")
 
         return (
-            1 + # alive bonus MAYBE
-            1 * tracking_lin_vel +
-            1 * tracking_yaw_rate +
-            -1 * feet_contact_penalty +
-            -1 * com_offset +
-            -1 * z_vel_penalty + # MAYBE
-            -1 * roll_pitch_ang_vel_penalty + # MAYBE
-            -1 * torque_penalty # MAYBE
+            1.0 + # alive bonus MAYBE
+            # 1 * tracking_lin_vel +
+            0.3 * tracking_yaw_rate +
+            1.0 * com_offset +
+            -5.0 * feet_contact_penalty +
+            -0.1 * z_vel_penalty + # MAYBE
+            -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
+            -1e-4 * torque_penalty # MAYBE
             )
     
 
