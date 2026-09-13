@@ -6,6 +6,7 @@ import torch
 from numpy.typing import NDArray
 from enum import Enum
 from internal_control.PID import PIDController
+from pprint import pprint
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -139,11 +140,11 @@ def train():
             agent.save(checkpoint_path)
             print(f"[Checkpoint] Saved for steps {step}")
 
-def load_test():
+def load_test(episode):
     time = 0
-    agent.load("./src/policies/checkpoint/ppo_go2_step_200000.pt")
+    agent.load(f"./src/policies/checkpoint/ppo_go2_step_{episode}.pt")
     obs = flatten_obs(env.reset())
-    for _ in range(1,2000*5+1):
+    for _ in range(1,2000):
         rl_action, log_prob, value = agent.select_action(obs)
         q_desired = action_scale * rl_action + pid_controller.q_nominal # nominal MAYBE
         q = env.mjData.qpos[7:19]
@@ -153,11 +154,12 @@ def load_test():
         # Advance clock
         time += env.simulation_dt
 
-        next_obs, _, terminated, truncated, _ = env.step(action)
+        next_obs, reward, terminated, truncated, info = env.step(action)
         done = truncated or terminated
         obs = next_obs
         obs = flatten_obs(obs)
         env.render()
+        print(env.mjData.qpos,env.mjData.qvel)
         if done:
             break
 

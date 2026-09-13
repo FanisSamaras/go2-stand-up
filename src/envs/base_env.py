@@ -84,6 +84,7 @@ class NewEnv(QuadrupedEnv):
         contact_count = sum(leg_contacts)
         feet_contact_penalty = 0
         com_offset = 1
+        center_of_mass_penalty = 1
         first_foot_contact_reward = 0.0
         second_foot_contact_reward = 0.0
         super_deluxe_reward_special = 0.0
@@ -98,6 +99,7 @@ class NewEnv(QuadrupedEnv):
             if contact_count == 3: feet_contact_penalty = 0.5
             if contact_count == 4: feet_contact_penalty = 1.0
         else:
+            sigma_com = 0.25
             com_xy = self.com[0:2]
             contact_point2D_1 = contact_positions["FL"] # fix
             contact_point2D_2 = contact_positions["RR"]
@@ -106,22 +108,36 @@ class NewEnv(QuadrupedEnv):
             # print(contact_point2D_1)
             contact_point2D_2 = contact_point2D_2[0].pos[0:2]
             com_offset = self.distance_from_line_2D(contact_point2D_1,contact_point2D_2,com_xy)
+            center_of_mass_penalty = np.exp(-com_offset ** 2)/(2 * sigma_com ** 2)
+            
         # except:
         # com_offset = 1
         # print("not in contact")
 
+        print(f"first_foot_contact_reward: {0.25 * first_foot_contact_reward} |"
+              f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|"
+              f"super_deluxe_reward_special: {4 * super_deluxe_reward_special}|"
+              f"lin_vel_penalty: {0.5 * lin_vel_penalty}|"
+              f"lin_ang_penalty: {0.5 * ang_vel_penalty}|"
+              f"center_of_mass_penalty: {-1.0 * center_of_mass_penalty}|"
+              f"feet_contact_penalty: {-2.0 * feet_contact_penalty}|"
+              f"z_vel_penalty: {-0.1 * z_vel_penalty}|"
+              f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|"
+              f"torque_penalty: {-1e-4 * torque_penalty}")
+
         return float(
             0.25 * first_foot_contact_reward +
             0.25 * second_foot_contact_reward + 
-            2.0 * super_deluxe_reward_special +
-            -0.5 * lin_vel_penalty
-            -0.5 * ang_vel_penalty
-            -1.0 * com_offset +
+            4.0 * super_deluxe_reward_special +
+            0.5 * lin_vel_penalty +
+            0.5 * ang_vel_penalty +
+            -1.0 * center_of_mass_penalty +
             -2.0 * feet_contact_penalty +
             -0.1 * z_vel_penalty + # MAYBE
             -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
             -1e-4 * torque_penalty # MAYBE
             )
+    
     
 
 if __name__ == "__main__":
