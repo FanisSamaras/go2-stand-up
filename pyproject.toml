@@ -39,7 +39,9 @@ explicit = true
 
 
 [project.scripts]
-go2-stand-up = "go2_stand_up:main"
+go2-stand-up-train = "go2_stand_up:train_dog"
+go2-stand-up-load= "go2_stand_up:load_dog"
+
 
 [build-system]
 requires = ["uv_build>=0.12.1,<0.13.0"]

@@ -65,7 +65,11 @@ class NewEnv(QuadrupedEnv):
         lin_vel_reward = np.exp(-np.sum(lin_vel ** 2)/ (2 * sigma_lin_vel ** 2))
         ang_vel_reward = np.exp(-np.sum(ang_vel ** 2)/ (2 * sigma_ang_vel ** 2))
         height = self.com[2]
-        height_penalty = 1 if height < 0.31 else 0
+        target_height = 0.31
+        sigma_height = 0.08
+        height_err = max(0.0, target_height - height)
+        height_penalty = 1.0 - np.exp(-(height_err ** 2) / (2 * sigma_height ** 2))
+
 
 
         # left-right rotation 
@@ -86,21 +90,22 @@ class NewEnv(QuadrupedEnv):
         contact_count = sum(leg_contacts)
         feet_contact_penalty = 0
         com_offset = 1
-        center_of_mass_reward = 1
         first_foot_contact_reward = 0.0
         second_foot_contact_reward = 0.0
         super_deluxe_reward_special = 0.0
         # print((contact_count !=2) ,(not leg_contacts[self.leg_pair[0]]),(not leg_contacts[self.leg_pair[1]]))        
-        if leg_contacts[self.leg_pair[0]]:
-            first_foot_contact_reward = 1.0
-        if leg_contacts[self.leg_pair[1]]:
-            second_foot_contact_reward = 1.0
-        if first_foot_contact_reward and second_foot_contact_reward and (contact_count == 2):
-            super_deluxe_reward_special = 1.0
+        if contact_count == 2:
+            if leg_contacts[self.leg_pair[0]]:
+                first_foot_contact_reward = 1.0
+            if leg_contacts[self.leg_pair[1]]:
+                second_foot_contact_reward = 1.0
+            if first_foot_contact_reward and second_foot_contact_reward:
+                super_deluxe_reward_special = 1.0
         if (contact_count!= 2) or (not leg_contacts[self.leg_pair[0]]) or (not leg_contacts[self.leg_pair[1]]):
             if contact_count == 3: feet_contact_penalty = 0.5
             if contact_count == 4: feet_contact_penalty = 1.0
-        else:
+            if contact_count <= 1: feet_contact_penalty = 0.75
+        try:
             sigma_com = 0.25
             com_xy = self.com[0:2]
             contact_point2D_1 = contact_positions["FL"] # fix
@@ -111,21 +116,42 @@ class NewEnv(QuadrupedEnv):
             contact_point2D_2 = contact_point2D_2[0].pos[0:2]
             com_offset = self.distance_from_line_2D(contact_point2D_1,contact_point2D_2,com_xy)
             center_of_mass_reward = np.exp((-com_offset ** 2)/(2 * sigma_com ** 2))
-            
+        except:
+            center_of_mass_reward = 0.0
+        current_action = self.mjData.ctrl.copy()
+        if not hasattr(self,"last_action_for_reward"):
+            self._last_action_for_reward = np.zeros_like(current_action)
+        action_rate_penalty = np.sum((current_action - self._last_action_for_reward))
+        self._last_action_for_reward = current_action  
         # except:
         # com_offset = 1
         # print("not in contact")
+        # if self.step_num == 0:
+        with open("./file.txt","a") as f:
+            for string in (f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
+            f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|",
+            f"super_deluxe_reward_special: {4 * super_deluxe_reward_special}|",
+            f"lin_vel_penalty: {0.5 * lin_vel_reward}|",
+            f"lin_ang_penalty: {0.5 * ang_vel_reward}|",
+            f"center_of_mass_reward: {-1.0 * center_of_mass_reward}|",
+            f"feet_contact_penalty: {-2.0 * feet_contact_penalty}|",
+            f"z_vel_penalty: {-0.1 * z_vel_penalty}|",
+            f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|",
+            f"torque_penalty: {-1e-4 * torque_penalty}\n\n"):
+                f.write(string)
+            else:
+                f.write("\n")
 
-        print(f"first_foot_contact_reward: {0.25 * first_foot_contact_reward} |"
-              f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|"
-              f"super_deluxe_reward_special: {4 * super_deluxe_reward_special}|"
-              f"lin_vel_penalty: {0.5 * lin_vel_reward}|"
-              f"lin_ang_penalty: {0.5 * ang_vel_reward}|"
-              f"center_of_mass_reward: {-1.0 * center_of_mass_reward}|"
-              f"feet_contact_penalty: {-2.0 * feet_contact_penalty}|"
-              f"z_vel_penalty: {-0.1 * z_vel_penalty}|"
-              f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|"
-              f"torque_penalty: {-1e-4 * torque_penalty}")
+        # print(f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
+        #     f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|",
+        #     f"super_deluxe_reward_special: {4 * super_deluxe_reward_special}|",
+        #     f"lin_vel_penalty: {0.5 * lin_vel_reward}|",
+        #     f"lin_ang_penalty: {0.5 * ang_vel_reward}|",
+        #     f"center_of_mass_reward: {-1.0 * center_of_mass_reward}|",
+        #     f"feet_contact_penalty: {-2.0 * feet_contact_penalty}|",
+        #     f"z_vel_penalty: {-0.1 * z_vel_penalty}|",
+        #     f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|",
+        #     f"torque_penalty: {-1e-4 * torque_penalty}\n\n",sep="\n")
 
         return float(
             0.25 * first_foot_contact_reward +
@@ -139,6 +165,7 @@ class NewEnv(QuadrupedEnv):
             -0.1 * z_vel_penalty + # MAYBE
             -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
             -1e-4 * torque_penalty # MAYBE
+            -5e-3 * action_rate_penalty
             )
     
     
