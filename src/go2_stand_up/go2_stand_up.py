@@ -1,11 +1,10 @@
 from envs import create_env,FULL_STATE_OBS
-from internal_control.PID import PIDController
+from internal_control.PID_alone import PIDController
 from policies.PPO import PPO,RolloutBuffer
 import numpy as np
 import torch
 from numpy.typing import NDArray
 from enum import Enum
-from internal_control.PID import PIDController
 from pprint import pprint
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
