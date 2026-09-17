@@ -10,8 +10,6 @@ from pprint import pprint
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-SEED = 42
-
 def flatten_obs(obs,keys = FULL_STATE_OBS):
     return np.concatenate([np.atleast_1d(obs[key]) for key in keys])
 
@@ -71,12 +69,7 @@ class Episode:
         self.number = number
 
 def train():
-    obs = flatten_obs(env.reset(random=False,qpos=np.array([0.0, 0.0 ,0.27,
-                                               1.0, 0.0, 0.0, 0.0,
-                                               0.0, 0.9, -1.8,
-                                               0.0, 0.9, -1.8,
-                                               0.0, 0.9, -1.8,
-                                               0.0, 0.9, -1.8],dtype=np.float32)))
+    obs = flatten_obs(env.reset())
 
     episode = Episode(0.0,0,0)
 
@@ -123,12 +116,7 @@ def train():
                 f"KL {latest_losses.get('approx_kl', 0.0):.4f}"
             )
 
-            obs = flatten_obs(env.reset(random=False,qpos=np.array([0.0, 0.0 ,0.27,
-                                               1.0, 0.0, 0.0, 0.0,
-                                               0.0, 0.9, -1.8,
-                                               0.0, 0.9, -1.8,
-                                               0.0, 0.9, -1.8,
-                                               0.0, 0.9, -1.8],dtype=np.float32)))
+            obs = flatten_obs(env.reset())
 
             episode.returns = 0.0
             episode.length_counter = 0
@@ -155,12 +143,7 @@ def train():
 def load_test(episode):
     time = 0
     agent.load(f"./src/policies/checkpoint/ppo_go2_step_{episode}.pt")
-    obs = flatten_obs(env.reset(qpos=np.array([0.0, 0.0 ,0.27,
-                                               1.0, 0.0, 0.0, 0.0,
-                                               0.0, 0.9, -1.8,
-                                               0.0, 0.9, -1.8,
-                                               0.0, 0.9, -1.8,
-                                               0.0, 0.9, -1.8],dtype=np.float32)))
+    obs = flatten_obs(env.reset())
     for _ in range(1,2000):
         rl_action, log_prob, value = agent.select_action(obs)
         q_desired = action_scale * rl_action + pid_controller.q_nominal # nominal MAYBE

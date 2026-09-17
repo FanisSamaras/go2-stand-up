@@ -41,6 +41,7 @@ explicit = true
 [project.scripts]
 go2-stand-up-train = "go2_stand_up:train_dog"
 go2-stand-up-load= "go2_stand_up:load_dog"
+go2-stand-up-test-PID = "go2_stand_up:test_dog_PID"
 
 
 [build-system]
