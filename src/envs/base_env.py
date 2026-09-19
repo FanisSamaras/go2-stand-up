@@ -37,11 +37,6 @@ class NewEnv(QuadrupedEnv):
     def set_leg_pair(self,leg_pair:tuple):
         self.leg_pair = leg_pair
 
-    def _check_for_invalid_contacts(self):
-        x , invalid_contacts =  super()._check_for_invalid_contacts()
-        self.invalid_contacts = invalid_contacts
-        return x , invalid_contacts
-
     def distance_from_line_2D(self,p1:NDArray,p2:NDArray,p3:NDArray)->float:
         """
         Calculates the distance of the 2D point p3 from the 2D line defined by the points p1, p2
@@ -130,47 +125,55 @@ class NewEnv(QuadrupedEnv):
         if not hasattr(self, "consecutive_legs_on_ground"):
             self._consecutive_legs_on_ground = 0
         self._consecutive_legs_on_ground = self._consecutive_legs_on_ground + 1 if super_deluxe_reward_special else 0 
-        super_duper_reward_special_pro_max = 1 if self._consecutive_legs_on_ground > 10 else 0
+        super_duper_reward_special_pro_max = self._consecutive_legs_on_ground
         action_rate_penalty = np.sum((current_action - self._last_action_for_reward))
         self._last_action_for_reward = current_action  
-        
-        # knee_penalty = 1.0 * num_of_knees
-        # except:
-        # com_offset = 1
-        # print("not in contact")
-        # if self.step_num == 0:
-    
+        invalid_contact_penalty = max(0, self.mjData.ncon - contact_count)
+        feet_position = self.feet_pos(frame="base").to_list()
+        feet_one_height = feet_position[self.leg_pair[0]][2]
+        feet_two_height = feet_position[self.leg_pair[1]][2]
+        feet_one_err = min(0.0, feet_one_height)
+        feet_two_err = min(0.0, feet_two_height)
+        feet_sigma = 0.09
+        feet_one_penalty = np.exp(-(feet_one_err ** 2) / (2 * feet_sigma ** 2))
+        feet_two_penalty = np.exp(-(feet_two_err ** 2) / (2 * feet_sigma ** 2))
+        feet_height_reward = (feet_one_penalty + feet_two_penalty) / 2
 
-        # print(f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
+        # print(
+        #     f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
         #     f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|",
-        #     f"super_deluxe_reward_special: {4 * super_deluxe_reward_special}|",
-        #     f"lin_vel_penalty: {0.5 * lin_vel_reward}|",
-        #     f"lin_ang_penalty: {0.5 * ang_vel_reward}|",
-        #     f"center_of_mass_reward: {-1.0 * center_of_mass_reward}|",
-        #     f"feet_contact_penalty: {-2.0 * feet_contact_penalty}|",
+        #     f"super_deluxe_reward_special: {1 * super_deluxe_reward_special}|",
+        #     f"super_duper_deluxe: {4 * super_duper_reward_special_pro_max}|",
+        #     f"lin_vel_reward: {0.3 * lin_vel_reward}|",
+        #     f"lin_ang_reward: {0.4 * ang_vel_reward}|",
+        #     f"center_of_mass_reward: {2.0 * center_of_mass_reward}|",
+        #     f"invalid_contact_penalty: {-5.0 * invalid_contact_penalty}|",
+        #     f"feet_height_penalty: {-1.0 * feet_height_penalty}|",
+        #     f"height_penalty: {-1.0 * height_penalty}|",
+        #     f"feet_contact_penalty: {-4.0 * feet_contact_penalty}|",
         #     f"z_vel_penalty: {-0.1 * z_vel_penalty}|",
         #     f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|",
-        #     f"torque_penalty: {-1e-4 * torque_penalty}\n\n",sep="\n")
-
-        # return float(
-        #     0.25 * first_foot_contact_reward +
-        #     0.25 * second_foot_contact_reward + 
-        #     3.0 * super_deluxe_reward_special +
-        #     0.7 * lin_vel_reward +
-        #     0.8 * ang_vel_reward +
-        #     1.0 * center_of_mass_reward +
-        #     -1.0 * height_penalty +
-        #     -2.0 * feet_contact_penalty +
-        #     -0.1 * z_vel_penalty + # MAYBE
-        #     -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
-        #     -1e-4 * torque_penalty # MAYBE
-        #     -5e-3 * action_rate_penalty
-        #     )
+        #     f"torque_penalty: {-1e-4 * torque_penalty}",
+        #     f"action_rate_penalty: {-5e-3 * action_rate_penalty}|",sep="\n")
+        # print(feet_one_penalty/2,feet_two_penalty/2)
+        # print(super_duper_reward_special_pro_max * 0.2)
         return float(
-            0.5 * first_foot_contact_reward + 0.5 * second_foot_contact_reward + 2.0 * center_of_mass_reward + 1.0 * super_deluxe_reward_special + 4 * super_duper_reward_special_pro_max
-            - 2.0 * feet_contact_penalty - 1.0 * height_penalty
-
-        )
+            0.25 * first_foot_contact_reward +
+            0.25 * second_foot_contact_reward + 
+            1.0 * super_deluxe_reward_special +
+            0.2 * super_duper_reward_special_pro_max +
+            0.3 * lin_vel_reward +
+            0.4 * ang_vel_reward +
+            2.0 * center_of_mass_reward +
+            0.5 * feet_height_reward + 
+            -5.0 * invalid_contact_penalty + 
+            -1.0 * height_penalty +
+            -2.0 * feet_contact_penalty +
+            -0.1 * z_vel_penalty + # MAYBE
+            -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
+            -1e-4 * torque_penalty # MAYBE
+            -5e-3 * action_rate_penalty
+            )
     
 
 if __name__ == "__main__":

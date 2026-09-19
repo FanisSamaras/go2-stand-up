@@ -12,8 +12,8 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 def flatten_obs(obs,keys = FULL_STATE_OBS):
     return np.concatenate([np.atleast_1d(obs[key]) for key in keys])
 
-def early_exit(terminated,truncated,steps,max_steps=1000):
-    return bool(terminated or truncated or (steps >= max_steps))
+def early_exit(terminated,truncated,steps,episode_length=2000):
+    return bool(terminated or truncated or (steps >= episode_length-1))
 
 class LegAssociation(Enum):
     FL = 0
@@ -30,7 +30,7 @@ episode_reward = 0.0
 OBS_DIM = 37
 ACTION_DIM = 12
 MAX_STEPS = 2_000_000
-EPISODE_LENGTH = 1000
+EPISODE_LENGTH = 2000
 SAVE_INTERVAL = 50_000
 
 action_scale = 0.25
@@ -92,7 +92,7 @@ def train():
         time += env.simulation_dt
 
         next_obs, reward, terminated, truncated, info = env.step(action)
-        done = early_exit(terminated,truncated,episode.length_counter,2000)
+        done = early_exit(terminated,truncated,episode.length_counter,episode_length=EPISODE_LENGTH)
 
         buffer.add(
             obs=obs,
@@ -137,13 +137,13 @@ def train():
             )
 
         if step % SAVE_INTERVAL == 0:
-            checkpoint_path = f"./src/policies/checkpoint/ppo_go2_step_{step}.pt"
+            checkpoint_path = f"./src/policies/checkpoint/ppo_go2_{step//SAVE_INTERVAL}.pt"
             agent.save(checkpoint_path)
             print(f"[Checkpoint] Saved for steps {step}")
 
 def load_test(episode):
     time = 0
-    agent.load(f"./src/policies/checkpoint/ppo_go2_step_{episode}.pt")
+    agent.load(f"./src/policies/checkpoint/ppo_go2_{episode}.pt")
     obs = flatten_obs(env.reset())
     for _ in range(1,1000):
         rl_action, log_prob, value = agent.select_action(obs)
@@ -161,10 +161,8 @@ def load_test(episode):
         obs = flatten_obs(obs)
         env.render()
         # print(env.mjData.qpos,env.mjData.qvel)
-        # if done:
-        #     break
-        if info["invalid_contacts"] :
-            print(info)
+        if done:
+            break
     
 
 if __name__ == "__main__":
