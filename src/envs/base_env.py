@@ -122,7 +122,7 @@ class NewEnv(QuadrupedEnv):
         if not hasattr(self, "_consecutive_legs_on_ground"):
             self._consecutive_legs_on_ground = 0
         self._consecutive_legs_on_ground = self._consecutive_legs_on_ground + 1 if super_deluxe_reward_special else 0 
-        super_duper_reward_special_pro_max = self._consecutive_legs_on_ground
+        super_duper_reward_special_pro_max = min(self._consecutive_legs_on_ground,100)
         action_rate_penalty = np.sum((current_action - self._last_action_for_reward))
         self._last_action_for_reward = current_action  
         invalid_contact_penalty = max(0, self.mjData.ncon - contact_count)
