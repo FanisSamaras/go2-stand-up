@@ -49,7 +49,7 @@ class NewEnv(QuadrupedEnv):
         numerator = abs((y2-y1)*p3[0] - (x2-x1)*p3[1] + x2*y1 - y2*x1)
         denominator = ((y2-y1)**2 + (x2-x1)**2)**0.5
 
-        return numerator/denominator
+        return numerator/max(denominator,1e-6)
 
     def _compute_reward(self):
         # stationary 
@@ -106,23 +106,20 @@ class NewEnv(QuadrupedEnv):
             if contact_count == 3: feet_contact_penalty = 0.5
             if contact_count == 4: feet_contact_penalty = 1.0
             if contact_count <= 1: feet_contact_penalty = 0.75
-        try:
-            sigma_com = 0.25
-            com_xy = self.com[0:2]
-            contact_point2D_1 = contact_positions["FL"] # fix
-            contact_point2D_2 = contact_positions["RR"]
-            # try:
-            contact_point2D_1 = contact_point2D_1[0].pos[0:2]
-            # print(contact_point2D_1)
-            contact_point2D_2 = contact_point2D_2[0].pos[0:2]
-            com_offset = self.distance_from_line_2D(contact_point2D_1,contact_point2D_2,com_xy)
-            center_of_mass_reward = np.exp((-com_offset ** 2)/(2 * sigma_com ** 2))
-        except:
-            center_of_mass_reward = 0.0
+    
+        sigma_com = 0.25
+        feet_world = self.feet_pos(frame="world").to_list()
+        foot_a_xy = feet_world[self.leg_pair[0]][:2]
+        foot_b_xy = feet_world[self.leg_pair[1]][:2]
+        com_xy = self.com[:2]
+
+        com_offset = self.distance_from_line_2D(foot_a_xy, foot_b_xy, com_xy)
+        center_of_mass_reward = np.exp(-(com_offset ** 2) / (2 * sigma_com ** 2))
+
         current_action = self.mjData.ctrl.copy()
-        if not hasattr(self,"last_action_for_reward"):
+        if not hasattr(self,"_last_action_for_reward"):
             self._last_action_for_reward = np.zeros_like(current_action)
-        if not hasattr(self, "consecutive_legs_on_ground"):
+        if not hasattr(self, "_consecutive_legs_on_ground"):
             self._consecutive_legs_on_ground = 0
         self._consecutive_legs_on_ground = self._consecutive_legs_on_ground + 1 if super_deluxe_reward_special else 0 
         super_duper_reward_special_pro_max = self._consecutive_legs_on_ground
@@ -130,8 +127,8 @@ class NewEnv(QuadrupedEnv):
         self._last_action_for_reward = current_action  
         invalid_contact_penalty = max(0, self.mjData.ncon - contact_count)
         feet_position = self.feet_pos(frame="base").to_list()
-        feet_one_height = feet_position[self.leg_pair[0]][2]
-        feet_two_height = feet_position[self.leg_pair[1]][2]
+        feet_one_height = feet_position[LegAssociation.FR.value][2]
+        feet_two_height = feet_position[LegAssociation.RL.value][2]
         feet_one_err = min(0.0, feet_one_height)
         feet_two_err = min(0.0, feet_two_height)
         feet_sigma = 0.09
@@ -157,6 +154,7 @@ class NewEnv(QuadrupedEnv):
         #     f"action_rate_penalty: {-5e-3 * action_rate_penalty}|",sep="\n")
         # print(feet_one_penalty/2,feet_two_penalty/2)
         # print(super_duper_reward_special_pro_max * 0.2)
+        # print(center_of_mass_reward)
         return float(
             0.25 * first_foot_contact_reward +
             0.25 * second_foot_contact_reward + 
