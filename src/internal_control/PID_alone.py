@@ -10,10 +10,10 @@ class PIDController:
         self.q_nominal = np.array([0.3, 1.3, -2.6,   #1.FL                
                                    0.0, 0.75, -1.5,   #2.FR
                                    0.0, 0.75, -1.5,   #3.RL
-                                   -0.03, 1.3, -2.6]   #4.RR
+                                   -0.3, 1.3, -2.6]   #4.RR
                                    ,dtype=np.float32)
         self.kp = np.array([25,25,25] * 4, dtype=np.float32)
-        self.kd = self.kp/16.25
+        self.kd = self.kp / 18
 
     def get_action(self,q,dq) -> NDArray:
         action = self.kp * (self.q_nominal - q) - self.kd * dq

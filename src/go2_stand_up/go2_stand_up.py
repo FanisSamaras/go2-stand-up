@@ -1,5 +1,5 @@
 from envs import create_env,FULL_STATE_OBS
-from internal_control.PID_alone import PIDController
+from internal_control.PID import PIDController
 from policies.PPO import PPO,RolloutBuffer
 import numpy as np
 import torch
@@ -33,14 +33,14 @@ MAX_STEPS = 2_000_000
 EPISODE_LENGTH = 1000
 SAVE_INTERVAL = 50_000
 
-action_scale = 0.5
+action_scale = 0.25
 
 agent = PPO(
     obs_dim=OBS_DIM,
     action_dim=ACTION_DIM,
     device=device,
-    lr=1e-4,
-    gamma=0.98,
+    lr=2e-4,
+    gamma=0.99,
     gae_lambda=0.95,
     clip_eps=0.2,
     value_coef=0.5,
@@ -75,6 +75,8 @@ def train():
     latest_losses = {}
 
     time = 0
+
+    # agent.load(f"./src/policies/checkpoint/ppo_go2_step_1000000.pt")
     for step in range(1,MAX_STEPS + 1):
         rl_action, log_prob, value = agent.select_action(obs)
 
@@ -143,7 +145,7 @@ def load_test(episode):
     time = 0
     agent.load(f"./src/policies/checkpoint/ppo_go2_step_{episode}.pt")
     obs = flatten_obs(env.reset())
-    for _ in range(1,2000):
+    for _ in range(1,40000):
         rl_action, log_prob, value = agent.select_action(obs)
         q_desired = action_scale * rl_action + pid_controller.q_nominal # nominal MAYBE
         q = env.mjData.qpos[7:19]
@@ -159,8 +161,8 @@ def load_test(episode):
         obs = flatten_obs(obs)
         env.render()
         # print(env.mjData.qpos,env.mjData.qvel)
-        if done:
-            break
+        # if done:
+        #     break
 
 if __name__ == "__main__":
     load_test()

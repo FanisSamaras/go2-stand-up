@@ -121,26 +121,19 @@ class NewEnv(QuadrupedEnv):
         current_action = self.mjData.ctrl.copy()
         if not hasattr(self,"last_action_for_reward"):
             self._last_action_for_reward = np.zeros_like(current_action)
+        if not hasattr(self, "consecutive_legs_on_ground"):
+            self._consecutive_legs_on_ground = 0
+        self._consecutive_legs_on_ground = self._consecutive_legs_on_ground + 1 if super_deluxe_reward_special else 0 
+        super_duper_reward_special_pro_max = 1 if self._consecutive_legs_on_ground > 10 else 0
         action_rate_penalty = np.sum((current_action - self._last_action_for_reward))
         self._last_action_for_reward = current_action  
+        
+        # knee_penalty = 1.0 * num_of_knees
         # except:
         # com_offset = 1
         # print("not in contact")
         # if self.step_num == 0:
-        with open("./file.txt","a") as f:
-            for string in (f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
-            f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|",
-            f"super_deluxe_reward_special: {4 * super_deluxe_reward_special}|",
-            f"lin_vel_penalty: {0.5 * lin_vel_reward}|",
-            f"lin_ang_penalty: {0.5 * ang_vel_reward}|",
-            f"center_of_mass_reward: {-1.0 * center_of_mass_reward}|",
-            f"feet_contact_penalty: {-2.0 * feet_contact_penalty}|",
-            f"z_vel_penalty: {-0.1 * z_vel_penalty}|",
-            f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|",
-            f"torque_penalty: {-1e-4 * torque_penalty}\n\n"):
-                f.write(string)
-            else:
-                f.write("\n")
+    
 
         # print(f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
         #     f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|",
@@ -153,20 +146,25 @@ class NewEnv(QuadrupedEnv):
         #     f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|",
         #     f"torque_penalty: {-1e-4 * torque_penalty}\n\n",sep="\n")
 
+        # return float(
+        #     0.25 * first_foot_contact_reward +
+        #     0.25 * second_foot_contact_reward + 
+        #     3.0 * super_deluxe_reward_special +
+        #     0.7 * lin_vel_reward +
+        #     0.8 * ang_vel_reward +
+        #     1.0 * center_of_mass_reward +
+        #     -1.0 * height_penalty +
+        #     -2.0 * feet_contact_penalty +
+        #     -0.1 * z_vel_penalty + # MAYBE
+        #     -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
+        #     -1e-4 * torque_penalty # MAYBE
+        #     -5e-3 * action_rate_penalty
+        #     )
         return float(
-            0.25 * first_foot_contact_reward +
-            0.25 * second_foot_contact_reward + 
-            5.0 * super_deluxe_reward_special +
-            0.7 * lin_vel_reward +
-            0.8 * ang_vel_reward +
-            1.0 * center_of_mass_reward +
-            -1.0 * height_penalty +
-            -2.0 * feet_contact_penalty +
-            -0.1 * z_vel_penalty + # MAYBE
-            -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
-            -1e-4 * torque_penalty # MAYBE
-            -5e-3 * action_rate_penalty
-            )
+            0.5 * first_foot_contact_reward + 0.5 * second_foot_contact_reward + 2.0 * center_of_mass_reward + 1.0 * super_deluxe_reward_special + 4 * super_duper_reward_special_pro_max
+            - 2.0 * feet_contact_penalty - 1.0 * height_penalty
+
+        )
     
     
 
