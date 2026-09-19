@@ -145,7 +145,7 @@ def load_test(episode):
     time = 0
     agent.load(f"./src/policies/checkpoint/ppo_go2_step_{episode}.pt")
     obs = flatten_obs(env.reset())
-    for _ in range(1,40000):
+    for _ in range(1,1000):
         rl_action, log_prob, value = agent.select_action(obs)
         q_desired = action_scale * rl_action + pid_controller.q_nominal # nominal MAYBE
         q = env.mjData.qpos[7:19]
@@ -163,6 +163,9 @@ def load_test(episode):
         # print(env.mjData.qpos,env.mjData.qvel)
         # if done:
         #     break
+        if info["invalid_contacts"] :
+            print(info)
+    
 
 if __name__ == "__main__":
     load_test()

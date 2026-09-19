@@ -32,9 +32,15 @@ class NewEnv(QuadrupedEnv):
                  leg_pair = (LegAssociation.FL.value,LegAssociation.RR.value)):
         super().__init__(robot, state_obs_names, scene, sim_dt, base_vel_command_type, ref_base_lin_vel, ref_base_ang_vel, ground_friction_coeff, legs_order, sensors, sensors_kwargs, external_disturbances_kwargs)
         self.leg_pair = leg_pair
+        self.invalid_contacts = {}
 
     def set_leg_pair(self,leg_pair:tuple):
         self.leg_pair = leg_pair
+
+    def _check_for_invalid_contacts(self):
+        x , invalid_contacts =  super()._check_for_invalid_contacts()
+        self.invalid_contacts = invalid_contacts
+        return x , invalid_contacts
 
     def distance_from_line_2D(self,p1:NDArray,p2:NDArray,p3:NDArray)->float:
         """
@@ -165,7 +171,6 @@ class NewEnv(QuadrupedEnv):
             - 2.0 * feet_contact_penalty - 1.0 * height_penalty
 
         )
-    
     
 
 if __name__ == "__main__":
