@@ -9,10 +9,10 @@ from pprint import pprint
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-def flatten_obs(obs,keys = FULL_STATE_OBS):
+def flatten_obs(obs,keys = FULL_STATE_OBS) -> NDArray:
     return np.concatenate([np.atleast_1d(obs[key]) for key in keys])
 
-def early_exit(terminated,truncated,steps,episode_length=2000):
+def early_exit(terminated,truncated,steps,episode_length=2000) -> bool:
     return bool(terminated or truncated or (steps >= episode_length-1))
 
 class LegAssociation(Enum):
@@ -33,7 +33,7 @@ MAX_STEPS = 2_000_000
 EPISODE_LENGTH = 2000
 SAVE_INTERVAL = 50_000
 
-action_scale = 0.5
+action_scale = 0.25
 
 agent = PPO(
     obs_dim=OBS_DIM,
@@ -103,6 +103,9 @@ def train():
             value=value
         )
 
+        if terminated or truncated:
+            episode.returns -= 500
+
         obs = next_obs
         obs = flatten_obs(obs)
         episode.returns += reward
@@ -145,7 +148,7 @@ def load_test(episode):
     time = 0
     agent.load(f"./src/policies/checkpoint/ppo_go2_{episode}.pt")
     obs = flatten_obs(env.reset())
-    for _ in range(1,1000):
+    for _ in range(1,2000):
         rl_action, log_prob, value = agent.select_action(obs)
         q_desired = action_scale * rl_action + pid_controller.q_nominal # nominal MAYBE
         q = env.mjData.qpos[7:19]

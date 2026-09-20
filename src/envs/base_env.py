@@ -29,13 +29,15 @@ class LegAssociation(Enum):
 
 class NewEnv(QuadrupedEnv):
     def __init__(self, robot, state_obs_names = ..., scene = 'flat', sim_dt = 0.002, base_vel_command_type = 'forward', ref_base_lin_vel = 0.5, ref_base_ang_vel = 0, ground_friction_coeff = 1, legs_order = ('FL', 'FR', 'RL', 'RR'), sensors = None, sensors_kwargs = None, external_disturbances_kwargs = None,
-                 leg_pair = (LegAssociation.FL.value,LegAssociation.RR.value)):
+                 desired_leg_pair = (LegAssociation.FL.value,LegAssociation.RR.value),undesired_leg_pair = (LegAssociation.FR.value,LegAssociation.RL.value)):
         super().__init__(robot, state_obs_names, scene, sim_dt, base_vel_command_type, ref_base_lin_vel, ref_base_ang_vel, ground_friction_coeff, legs_order, sensors, sensors_kwargs, external_disturbances_kwargs)
-        self.leg_pair = leg_pair
-        self.invalid_contacts = {}
+        self.desired_leg_pair = desired_leg_pair
+        self.undesired_leg_pair = undesired_leg_pair
+  
 
-    def set_leg_pair(self,leg_pair:tuple):
-        self.leg_pair = leg_pair
+    def set_leg_pair(self,desired_leg_pair:tuple,undesired_leg_pair:tuple):
+        self.desired_leg_pair = desired_leg_pair
+        self.undesired_leg_pair = undesired_leg_pair
 
     def distance_from_line_2D(self,p1:NDArray,p2:NDArray,p3:NDArray)->float:
         """
@@ -52,19 +54,29 @@ class NewEnv(QuadrupedEnv):
         return numerator/max(denominator,1e-6)
 
     def _compute_reward(self):
-        # stationary 
-        # lin_vel_err_B = self.base_lin_vel_err(frame="base")
-        # ang_vel_err_B = self.base_ang_vel_err(frame="base")
-        # sigma_lin_vel = 0.25
-        # sigma_ang_vel = 0.25
-        # tracking_lin_vel = np.exp(-np.sum(lin_vel_err_B[:2] ** 2) / (2 * sigma_lin_vel **2))
-        # tracking_yaw_rate = np.exp(-(ang_vel_err_B[2] ** 2) / (2 * sigma_ang_vel **2))
+        '''
+        The reward function for the learning process of the go2 quadruped to stand on the desired pair of legs
+
+        ### Reward function terms: 
+        \t#### Reward terms:
+            1. lin_vel_reward (float): Reward for the go2 having close to 0 linear velocity, corresponding factor: 0.3
+            2. ang_vel_reward (float): Reward for the go2 having close to 0 angular velocity, corresponding factor: 0.4
+            3.
+
+        \t#### Penalty terms:
+        
+        ### Returns:
+            something
+        '''
+
         lin_vel = self.base_lin_vel(frame="base")[:2]
         ang_vel = self.base_ang_vel(frame="base")[:2]
         sigma_lin_vel = 0.25
         sigma_ang_vel = 0.25
         lin_vel_reward = np.exp(-np.sum(lin_vel ** 2)/ (2 * sigma_lin_vel ** 2))
         ang_vel_reward = np.exp(-np.sum(ang_vel ** 2)/ (2 * sigma_ang_vel ** 2))
+
+
         height = self.com[2]
         target_height = 0.31
         sigma_height = 0.08
@@ -96,21 +108,27 @@ class NewEnv(QuadrupedEnv):
         super_deluxe_reward_special = 0.0
         # print((contact_count !=2) ,(not leg_contacts[self.leg_pair[0]]),(not leg_contacts[self.leg_pair[1]]))        
         if contact_count == 2:
-            if leg_contacts[self.leg_pair[0]]:
+            if leg_contacts[self.desired_leg_pair[0]]:
                 first_foot_contact_reward = 1.0
-            if leg_contacts[self.leg_pair[1]]:
+            if leg_contacts[self.desired_leg_pair[1]]:
                 second_foot_contact_reward = 1.0
             if first_foot_contact_reward and second_foot_contact_reward:
                 super_deluxe_reward_special = 1.0
-        if (contact_count!= 2) or (not leg_contacts[self.leg_pair[0]]) or (not leg_contacts[self.leg_pair[1]]):
+        if contact_count!= 2:
             if contact_count == 3: feet_contact_penalty = 0.5
             if contact_count == 4: feet_contact_penalty = 1.0
             if contact_count <= 1: feet_contact_penalty = 0.75
+
+        if leg_contacts[self.undesired_leg_pair[0]]:
+            third_foot_contact_penalty = 1.0
+        if leg_contacts[self.undesired_leg_pair[1]]:
+            fourth_foot_contact_penalty = 1.0
+            
     
         sigma_com = 0.25
         feet_world = self.feet_pos(frame="world").to_list()
-        foot_a_xy = feet_world[self.leg_pair[0]][:2]
-        foot_b_xy = feet_world[self.leg_pair[1]][:2]
+        foot_a_xy = feet_world[self.desired_leg_pair[0]][:2]
+        foot_b_xy = feet_world[self.desired_leg_pair[1]][:2]
         com_xy = self.com[:2]
 
         com_offset = self.distance_from_line_2D(foot_a_xy, foot_b_xy, com_xy)
@@ -136,29 +154,30 @@ class NewEnv(QuadrupedEnv):
         feet_two_penalty = np.exp(-(feet_two_err ** 2) / (2 * feet_sigma ** 2))
         feet_height_reward = (feet_one_penalty + feet_two_penalty) / 2
 
-        # print(
-        #     f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
-        #     f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|",
-        #     f"super_deluxe_reward_special: {1 * super_deluxe_reward_special}|",
-        #     f"super_duper_deluxe: {4 * super_duper_reward_special_pro_max}|",
-        #     f"lin_vel_reward: {0.3 * lin_vel_reward}|",
-        #     f"lin_ang_reward: {0.4 * ang_vel_reward}|",
-        #     f"center_of_mass_reward: {2.0 * center_of_mass_reward}|",
-        #     f"invalid_contact_penalty: {-5.0 * invalid_contact_penalty}|",
-        #     f"feet_height_penalty: {-1.0 * feet_height_penalty}|",
-        #     f"height_penalty: {-1.0 * height_penalty}|",
-        #     f"feet_contact_penalty: {-4.0 * feet_contact_penalty}|",
-        #     f"z_vel_penalty: {-0.1 * z_vel_penalty}|",
-        #     f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|",
-        #     f"torque_penalty: {-1e-4 * torque_penalty}",
-        #     f"action_rate_penalty: {-5e-3 * action_rate_penalty}|",sep="\n")
+        print(
+            f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
+            f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|",
+            f"super_deluxe_reward_special: {1 * super_deluxe_reward_special}|",
+            f"super_duper_deluxe: {4 * super_duper_reward_special_pro_max}|",
+            f"lin_vel_reward: {0.3 * lin_vel_reward}|",
+            f"lin_ang_reward: {0.4 * ang_vel_reward}|",
+            f"center_of_mass_reward: {2.0 * center_of_mass_reward}|",
+            f"invalid_contact_penalty: {-5.0 * invalid_contact_penalty}|",
+            f"feet_height_penalty: {-1.0 * feet_height_reward}|",
+            f"height_penalty: {-1.0 * height_penalty}|",
+            f"feet_contact_penalty: {-4.0 * feet_contact_penalty}|",
+            f"z_vel_penalty: {-0.1 * z_vel_penalty}|",
+            f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|",
+            f"torque_penalty: {-1e-4 * torque_penalty}",
+            f"action_rate_penalty: {-5e-3 * action_rate_penalty}|",sep="\n")
         # print(feet_one_penalty/2,feet_two_penalty/2)
         # print(super_duper_reward_special_pro_max * 0.2)
         # print(center_of_mass_reward)
         return float(
+            0.2 + 
             0.25 * first_foot_contact_reward +
             0.25 * second_foot_contact_reward + 
-            1.0 * super_deluxe_reward_special +
+            # 1.0 * super_deluxe_reward_special +
             0.2 * super_duper_reward_special_pro_max +
             0.3 * lin_vel_reward +
             0.4 * ang_vel_reward +
