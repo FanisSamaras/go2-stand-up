@@ -7,10 +7,10 @@ class PIDController:
     \n Leg order FL, FR, RL, RR
     '''
     def __init__(self) -> None:
-        self.q_nominal = np.array([0.3, 1.3, -2.6,   #1.FL                
-                                   0.0, 0.75, -1.5,   #2.FR
-                                   0.0, 0.75, -1.5,   #3.RL
-                                   -0.3, 1.3, -2.6]   #4.RR
+        self.q_nominal = np.array([0.0, 0.9, -1.8,   #1.FL                
+                                   -0.18, 0.73, -1.85,   #2.FR
+                                   0.18, 1.11, -1.85,   #3.RL
+                                   0.0, 0.9, -1.8]   #4.RR
                                    ,dtype=np.float32)
         self.kp = np.array([25,25,25] * 4, dtype=np.float32)
         self.kd = self.kp / 18

@@ -33,7 +33,8 @@ class NewEnv(QuadrupedEnv):
         super().__init__(robot, state_obs_names, scene, sim_dt, base_vel_command_type, ref_base_lin_vel, ref_base_ang_vel, ground_friction_coeff, legs_order, sensors, sensors_kwargs, external_disturbances_kwargs)
         self.desired_leg_pair = desired_leg_pair
         self.undesired_leg_pair = undesired_leg_pair
-  
+        self._last_action_for_reward = np.zeros(12)
+        self._consecutive_legs_on_ground = 0
 
     def set_leg_pair(self,desired_leg_pair:tuple,undesired_leg_pair:tuple):
         self.desired_leg_pair = desired_leg_pair
@@ -52,6 +53,11 @@ class NewEnv(QuadrupedEnv):
         denominator = ((y2-y1)**2 + (x2-x1)**2)**0.5
 
         return numerator/max(denominator,1e-6)
+
+    def reset(self, qpos = None, qvel = None, seed = None, random = True, options = None):
+        self._consecutive_legs_on_ground = 0
+        self._last_action_for_reward = np.zeros(12)
+        return super().reset(qpos, qvel, seed, random, options)
 
     def _compute_reward(self):
         '''
@@ -154,22 +160,22 @@ class NewEnv(QuadrupedEnv):
         feet_two_penalty = np.exp(-(feet_two_err ** 2) / (2 * feet_sigma ** 2))
         feet_height_reward = (feet_one_penalty + feet_two_penalty) / 2
 
-        print(
-            f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
-            f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|",
-            f"super_deluxe_reward_special: {1 * super_deluxe_reward_special}|",
-            f"super_duper_deluxe: {4 * super_duper_reward_special_pro_max}|",
-            f"lin_vel_reward: {0.3 * lin_vel_reward}|",
-            f"lin_ang_reward: {0.4 * ang_vel_reward}|",
-            f"center_of_mass_reward: {2.0 * center_of_mass_reward}|",
-            f"invalid_contact_penalty: {-5.0 * invalid_contact_penalty}|",
-            f"feet_height_penalty: {-1.0 * feet_height_reward}|",
-            f"height_penalty: {-1.0 * height_penalty}|",
-            f"feet_contact_penalty: {-4.0 * feet_contact_penalty}|",
-            f"z_vel_penalty: {-0.1 * z_vel_penalty}|",
-            f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|",
-            f"torque_penalty: {-1e-4 * torque_penalty}",
-            f"action_rate_penalty: {-5e-3 * action_rate_penalty}|",sep="\n")
+        # print(
+        #     f"first_foot_contact_reward: {0.25 * first_foot_contact_reward}|",
+        #     f"second_foot_contact_reward: {0.25 * second_foot_contact_reward}|",
+        #     f"super_deluxe_reward_special: {1 * super_deluxe_reward_special}|",
+        #     f"super_duper_deluxe: {4 * super_duper_reward_special_pro_max}|",
+        #     f"lin_vel_reward: {0.3 * lin_vel_reward}|",
+        #     f"lin_ang_reward: {0.4 * ang_vel_reward}|",
+        #     f"center_of_mass_reward: {2.0 * center_of_mass_reward}|",
+        #     f"invalid_contact_penalty: {-5.0 * invalid_contact_penalty}|",
+        #     f"feet_height_penalty: {-1.0 * feet_height_reward}|",
+        #     f"height_penalty: {-1.0 * height_penalty}|",
+        #     f"feet_contact_penalty: {-4.0 * feet_contact_penalty}|",
+        #     f"z_vel_penalty: {-0.1 * z_vel_penalty}|",
+        #     f"roll_pitch_and_vel_penalty: {-0.1 * roll_pitch_ang_vel_penalty}|",
+        #     f"torque_penalty: {-1e-4 * torque_penalty}",
+        #     f"action_rate_penalty: {-5e-3 * action_rate_penalty}|",sep="\n")
         # print(feet_one_penalty/2,feet_two_penalty/2)
         # print(super_duper_reward_special_pro_max * 0.2)
         # print(center_of_mass_reward)
