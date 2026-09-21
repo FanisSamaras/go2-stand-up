@@ -6,7 +6,7 @@ def train_dog() -> None:
     env.close()
 
 def load_dog() -> None:
-    load_test(35)
+    load_test(30)
     env.close()
 
 def test_dog_PID() -> None:

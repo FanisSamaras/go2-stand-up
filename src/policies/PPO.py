@@ -9,7 +9,7 @@ class ActorCritic(nn.Module):
             self,
             obs_dim,
             action_dim,
-            hidden_dim=512,
+            hidden_dim=256,
             init_log_std=-0.5,
             min_log_var=-5.0,
             max_log_var=1.0):

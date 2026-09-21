@@ -33,7 +33,8 @@ MAX_STEPS = 2_000_000
 EPISODE_LENGTH = 2000
 SAVE_INTERVAL = 50_000
 
-action_scale = 0.25
+action_scale = 0.4
+# action_scale = 0.25
 
 agent = PPO(
     obs_dim=OBS_DIM,

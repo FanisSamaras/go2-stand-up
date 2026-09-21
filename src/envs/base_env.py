@@ -146,8 +146,8 @@ class NewEnv(QuadrupedEnv):
         if not hasattr(self, "_consecutive_legs_on_ground"):
             self._consecutive_legs_on_ground = 0
         self._consecutive_legs_on_ground = self._consecutive_legs_on_ground + 1 if super_deluxe_reward_special else 0 
-        super_duper_reward_special_pro_max = min(self._consecutive_legs_on_ground,100)
-        action_rate_penalty = np.sum((current_action - self._last_action_for_reward))
+        super_duper_reward_special_pro_max = min(self._consecutive_legs_on_ground,20)
+        action_rate_penalty = np.sum((current_action - self._last_action_for_reward)**2)
         self._last_action_for_reward = current_action  
         invalid_contact_penalty = max(0, self.mjData.ncon - contact_count)
         feet_position = self.feet_pos(frame="base").to_list()
@@ -183,19 +183,19 @@ class NewEnv(QuadrupedEnv):
             0.2 + 
             0.25 * first_foot_contact_reward +
             0.25 * second_foot_contact_reward + 
-            # 1.0 * super_deluxe_reward_special +
-            0.2 * super_duper_reward_special_pro_max +
+            1.5 * super_deluxe_reward_special + ####
+            0.4 * super_duper_reward_special_pro_max +
             0.3 * lin_vel_reward +
             0.4 * ang_vel_reward +
-            2.0 * center_of_mass_reward +
-            0.5 * feet_height_reward + 
-            -5.0 * invalid_contact_penalty + 
+            # 2.0 * center_of_mass_reward + #### from 2.0
+            1.0 * feet_height_reward + ### from 0.5
+            -5.5 * invalid_contact_penalty + #### from 5.0
             -1.0 * height_penalty +
-            -2.0 * feet_contact_penalty +
+            -4.0 * feet_contact_penalty + ### from 2.0
             -0.1 * z_vel_penalty + # MAYBE
             -0.1 * roll_pitch_ang_vel_penalty + # MAYBE
             -1e-4 * torque_penalty # MAYBE
-            -5e-3 * action_rate_penalty
+            -1e-4 * action_rate_penalty
             )
     
 

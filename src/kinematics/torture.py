@@ -114,10 +114,6 @@ initial_qpos = data.qpos.copy()
 initial_qvel = data.qvel.copy()
 
 
-initial_qpos = data.qpos.copy()
-initial_qvel = data.qvel.copy()
-
-
 # ============================================================
 # Kinematics
 # ============================================================
