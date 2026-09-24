@@ -13,6 +13,7 @@ dependencies = [
     "matplotlib>=3.11.1",
     "mujoco>=3.12.0",
     "numpy>=2.5.2",
+    "stable-baselines3[extra]>=2.9.0",
     "torch>=2.14.0",
     "torchvision>=0.29.0",
 ]
@@ -39,9 +40,9 @@ explicit = true
 
 
 [project.scripts]
-go2-stand-up-train = "go2_stand_up:train_dog"
-go2-stand-up-load= "go2_stand_up:load_dog"
-go2-stand-up-test-PID = "go2_stand_up:test_dog_PID"
+train = "go2_stand_up:train_dog"
+load= "go2_stand_up:load_dog"
+testPID = "go2_stand_up:test_dog_PID"
 
 
 [build-system]

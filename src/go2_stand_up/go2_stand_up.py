@@ -1,174 +1,90 @@
-from envs import create_env,FULL_STATE_OBS
+from envs import create_env, FULL_STATE_OBS
+from envs.base_env import SB3QuadrupedWrapper  
 from internal_control.PID import PIDController
-from policies.PPO import PPO,RolloutBuffer
-import numpy as np
-import torch
-from numpy.typing import NDArray
-from enum import Enum
-from pprint import pprint
+from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
 
-def flatten_obs(obs,keys = FULL_STATE_OBS) -> NDArray:
-    return np.concatenate([np.atleast_1d(obs[key]) for key in keys])
-
-def early_exit(terminated,truncated,steps,episode_length=2000) -> bool:
-    return bool(terminated or truncated or (steps >= episode_length-1))
-
-class LegAssociation(Enum):
-    FL = 0
-    FR = 1
-    RL = 2
-    RR = 3
-
-env = create_env()
-
-obs = env.reset()
-
-episode_reward = 0.0
-
-OBS_DIM = 37
-ACTION_DIM = 12
+N_ENVS = 4
 MAX_STEPS = 2_000_000
 EPISODE_LENGTH = 2000
-SAVE_INTERVAL = 50_000
+SAVE_INTERVAL = 100_000
+ACTION_SCALE = 0.3
+DECIMATION = 4
+TERMINATION_PENALTY = 500.
 
-action_scale = 0.4
-# action_scale = 0.25
+CHECKPOINT_DIR = "./src/policies/checkpoint/"
+TENSORBOARD_DIR = "./src/go2_stand_up/tensor"
 
-agent = PPO(
-    obs_dim=OBS_DIM,
-    action_dim=ACTION_DIM,
-    device=device,
-    lr=2e-4,
-    gamma=0.999,
-    gae_lambda=0.95,
-    clip_eps=0.2,
-    value_coef=0.5,
-    entropy_coef=0.005,
-    max_grad_norm=0.5,
-    ppo_epochs=5,
-    minibatch_size=256)
 
-buffer = RolloutBuffer(
-    obs_dim=OBS_DIM,
-    action_dim=ACTION_DIM,
-    rollout_steps=4096,
-    device=device
-)
+def make_env():
+    env = create_env()
+    env = SB3QuadrupedWrapper(
+        env,
+        obs_keys=FULL_STATE_OBS,
+        pid=PIDController(),
+        action_scale=ACTION_SCALE,
+        decimation=DECIMATION,
+        max_episode_steps=EPISODE_LENGTH,
+        termination_penalty=TERMINATION_PENALTY,
+    )
+    return Monitor(env)  # logs ep_rew_mean / ep_len_mean
 
-pid_controller = PIDController()
-
-obs = flatten_obs(env.reset())
-print(obs.shape)
-
-class Episode:
-    def __init__(self,returns, length_counter, number):
-        self.returns = returns
-        self.length_counter = length_counter
-        self.number = number
 
 def train():
-    obs = flatten_obs(env.reset())
+    base_vec = DummyVecEnv([make_env for _ in range(N_ENVS)])
+    vec_env = VecNormalize(base_vec, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
 
-    episode = Episode(0.0,0,0)
+    agent = PPO(
+        policy="MlpPolicy",
+        env=vec_env,
+        learning_rate=3e-4,
+        n_steps=4096,
+        batch_size=512,
+        n_epochs=5,
+        gamma=0.99,
+        gae_lambda=0.95,
+        clip_range=0.2,
+        clip_range_vf=None,
+        normalize_advantage=True,
+        ent_coef=0.01,
+        vf_coef=0.5,
+        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
+        tensorboard_log=TENSORBOARD_DIR,
+        verbose=1,
+        device="cpu",
+    )
 
-    latest_losses = {}
+    checkpoint_callback = CheckpointCallback(
+        save_freq=max(SAVE_INTERVAL // N_ENVS, 1),
+        save_path=CHECKPOINT_DIR,
+        name_prefix="ppo_go2",
+        save_vecnormalize=True,
+        verbose=2,
+    )
 
-    time = 0
+    agent.learn(total_timesteps=MAX_STEPS, callback=checkpoint_callback)
+    agent.save(CHECKPOINT_DIR + "final")
+    vec_env.save(CHECKPOINT_DIR + "final_vecnormalize.pkl")
 
-    # agent.load(f"./src/policies/checkpoint/ppo_go2_step_1000000.pt")
-    for step in range(1,MAX_STEPS + 1):
-        rl_action, log_prob, value = agent.select_action(obs)
 
-        q_desired = action_scale * rl_action + pid_controller.q_nominal # nominal MAYBE
+def load_test(num_of_steps:int, steps: int = 2000):
+    base_vec = DummyVecEnv([make_env])
+    vec_env = VecNormalize.load(f"{CHECKPOINT_DIR}ppo_go2_vecnormalize_{num_of_steps}_steps.pkl", base_vec)
+    vec_env.training = False
+    vec_env.norm_reward = False
 
-        q = env.mjData.qpos[7:19]
-        dq = env.mjData.qvel[6:18]
-    
-        # Compute real motor torque commands
-        action = (q_desired - q) * pid_controller.kp - dq * pid_controller.kd
-
-        # Advance clock
-        time += env.simulation_dt
-
-        next_obs, reward, terminated, truncated, info = env.step(action)
-        done = early_exit(terminated,truncated,episode.length_counter,episode_length=EPISODE_LENGTH)
-
-        buffer.add(
-            obs=obs,
-            action=rl_action,
-            log_prob=log_prob,
-            reward=reward,
-            done=float(done),
-            value=value
-        )
-
-        if terminated or truncated:
-            episode.returns -= 500
-
-        obs = next_obs
-        obs = flatten_obs(obs)
-        episode.returns += reward
-        episode.length_counter += 1
-
-        if done:
-            print(
-                f"Episode {episode.number:05d} |"
-                f"Step {step:08d} |"
-                f"Return {episode.returns:8.2f} |"
-                f"Length {episode.length_counter} |"
-                f"KL {latest_losses.get('approx_kl', 0.0):.4f}"
-            )
-
-            obs = flatten_obs(env.reset())
-
-            episode.returns = 0.0
-            episode.length_counter = 0
-            episode.number +=1
-    
-        if buffer.is_full():
-
-            last_value = agent.value(obs)
-            latest_losses = agent.update(buffer, last_value)
-            buffer.clear()   
-            print(
-                f"[PPO Update] Step {step:08d} | "
-                f"policy_loss {latest_losses['policy_loss']:.4f} | "
-                f"value_loss {latest_losses['value_loss']:.4f} | "
-                f"entropy {latest_losses['entropy']:.4f} | "
-                f"KL {latest_losses['approx_kl']:.4f}"
-            )
-
-        if step % SAVE_INTERVAL == 0:
-            checkpoint_path = f"./src/policies/checkpoint/ppo_go2_{step//SAVE_INTERVAL}.pt"
-            agent.save(checkpoint_path)
-            print(f"[Checkpoint] Saved for steps {step}")
-
-def load_test(episode):
-    time = 0
-    agent.load(f"./src/policies/checkpoint/ppo_go2_{episode}.pt")
-    obs = flatten_obs(env.reset())
-    for _ in range(1,2000):
-        rl_action, log_prob, value = agent.select_action(obs)
-        q_desired = action_scale * rl_action + pid_controller.q_nominal # nominal MAYBE
-        q = env.mjData.qpos[7:19]
-        dq = env.mjData.qvel[6:18]
-        # Compute real motor torque commands
-        action = pid_controller.kp * (q_desired - q) - pid_controller.kd * dq
-        # Advance clock
-        time += env.simulation_dt
-
-        next_obs, reward, terminated, truncated, info = env.step(action)
-        done = truncated or terminated
-        obs = next_obs
-        obs = flatten_obs(obs)
-        env.render()
-        # print(env.mjData.qpos,env.mjData.qvel)
-        if done:
+    agent = PPO.load(f"{CHECKPOINT_DIR}ppo_go2_{num_of_steps}_steps.zip", env=vec_env, device="cpu")
+    obs = vec_env.reset()
+    for _ in range(steps):
+        action, _ = agent.predict(obs, deterministic=True)
+        obs, reward, done, info = vec_env.step(action)
+        base_vec.envs[0].render()
+        if done[0]:
             break
-    
+
 
 if __name__ == "__main__":
-    load_test()
-    env.close()
+    pass

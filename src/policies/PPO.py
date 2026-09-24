@@ -9,7 +9,7 @@ class ActorCritic(nn.Module):
             self,
             obs_dim,
             action_dim,
-            hidden_dim=256,
+            hidden_dim=512,
             init_log_std=-0.5,
             min_log_var=-5.0,
             max_log_var=1.0):
@@ -38,14 +38,11 @@ class ActorCritic(nn.Module):
             nn.Tanh(),
             nn.Linear(hidden_dim,hidden_dim),
             nn.Tanh(),
-            nn.Linear(hidden_dim,hidden_dim),
-            nn.Tanh(),
             nn.Linear(hidden_dim,1)
         )
 
         # Useful for residual learning:
         # initial policy outputs near-zero residual actions.
-
         nn.init.uniform_(self.log_var.weight,-1e-4,1e-4)
         nn.init.constant_(self.log_var.bias, init_log_std)
 
