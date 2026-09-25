@@ -43,6 +43,7 @@ explicit = true
 train = "go2_stand_up:train_dog"
 load= "go2_stand_up:load_dog"
 testPID = "go2_stand_up:test_dog_PID"
+resume-train = "go2_stand_up:resume_train_dog"
 
 
 [build-system]

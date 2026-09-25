@@ -85,6 +85,39 @@ def load_test(num_of_steps:int, steps: int = 2000):
         if done[0]:
             break
 
+def resume_training(extra_timesteps: int = MAX_STEPS):
+    base_vec = DummyVecEnv([make_env for _ in range(N_ENVS)])
+
+    vec_env = VecNormalize.load(
+        f"{CHECKPOINT_DIR}final_vecnormalize.pkl",
+        base_vec,
+    )
+
+    vec_env.training = True
+    vec_env.norm_reward = True
+
+    agent = PPO.load(
+        f"{CHECKPOINT_DIR}final.zip",
+        env=vec_env,
+        device="cpu",
+    )
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=max(SAVE_INTERVAL // N_ENVS, 1),
+        save_path=CHECKPOINT_DIR,
+        name_prefix="ppo_go2_resumed",
+        save_vecnormalize=True,
+        verbose=2,
+    )
+
+    agent.learn(
+        total_timesteps=extra_timesteps,
+        callback=checkpoint_callback,
+        reset_num_timesteps=False,
+    )
+
+    agent.save(f"{CHECKPOINT_DIR}final_resumed")
+    vec_env.save(f"{CHECKPOINT_DIR}final_resumed_vecnormalize.pkl")
 
 if __name__ == "__main__":
     pass

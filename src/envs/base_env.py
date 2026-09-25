@@ -38,6 +38,7 @@ class NewEnv(QuadrupedEnv):
         self.undesired_leg_pair = undesired_leg_pair
         self._last_action_for_reward = np.zeros(12)
         self._consecutive_legs_on_ground = 0
+        self._time_since_violation = 0.0
 
     def set_leg_pair(self,desired_leg_pair:tuple,undesired_leg_pair:tuple):
         self.desired_leg_pair = desired_leg_pair
@@ -60,7 +61,12 @@ class NewEnv(QuadrupedEnv):
     def reset(self, qpos = None, qvel = None, seed = None, random = True, options = None):
         self._consecutive_legs_on_ground = 0
         self._last_action_for_reward = np.zeros(12)
+        self._time_since_violation = 0.0
         return super().reset(qpos, qvel, seed, random, options)
+
+    def step(self, action):
+        self._time_since_violation += self.simulation_time
+        return super().step(action)
 
     def _compute_reward(self):
         '''
@@ -128,9 +134,13 @@ class NewEnv(QuadrupedEnv):
             if leg_contacts[self.desired_leg_pair[0]] and leg_contacts[self.desired_leg_pair[1]]:
                 both_desired_foot_reward = 1.0
         if contact_count!= 2:
+            self._time_since_violation = 0.0
             if contact_count == 3: feet_contact_penalty = 1.25
             if contact_count == 4: feet_contact_penalty = 1.5
             if contact_count <= 1: feet_contact_penalty = 2.
+
+        #time
+        airtime_reward = min(self._time_since_violation, 2.)
 
         # Center Of Mass (COM) Reward
         sigma_com = 0.05
@@ -185,6 +195,7 @@ class NewEnv(QuadrupedEnv):
         # print(feet_one_penalty/2,feet_two_penalty/2)
         # print(super_duper_reward_special_pro_max * 0.2)
         # print(center_of_mass_reward)
+        # print(airtime_reward)
         return float(
             0.2 * alive_bonus + 
             0.25 * first_desired_foot_contact_reward +
@@ -194,9 +205,10 @@ class NewEnv(QuadrupedEnv):
             0.4 * ang_vel_reward +
             2.0 * center_of_mass_reward + #### from 2.0
             1.5 * feet_height_reward + ### from 0.5
+            1.5 * airtime_reward + # 0. to 2. (seconds)
             -5.0 * invalid_contact_penalty + #### from 5.0
             -1.0 * height_penalty +
-            -3.0 * feet_contact_penalty + ### from 2.0
+            -4.0 * feet_contact_penalty + ### from 2.0
             -0.5 * z_vel_penalty + # MAYBE
             -0.25 * roll_pitch_ang_vel_penalty + # MAYBE
             -1e-4 * torque_penalty # MAYBE

@@ -8,11 +8,11 @@ class PIDController:
     \n Leg order FL, FR, RL, RR
     '''
     def __init__(self) -> None:
-        self.q_nominal = np.array([ 0.0, 0.9, -1.8,   #1.FL                
-                                    0.0, 0.9, -1.8,   #2.FR
-                                    0.0, 0.9, -1.8,   #3.RL
-                                    0.0, 0.9, -1.8]   #4.RR
-                                   ,dtype=np.float32)
+        self.q_nominal = np.array([0.0, 0.9, -1.8,   #1.FL                
+                                  -0.18, 1.40, -2.52,  #2.FR
+                                   0.18, 1.40, -2.52,  #3.RL
+                                   0.0, 0.9, -1.8]   #4.RR
+                                ,dtype=np.float32)
         self.kp = np.array([20,35,45] * 4, dtype=np.float32) * 5
         self.kd = self.kp/18
         self.torque_limit = np.array([23.7, 23.7, 45.3] * 4, dtype=np.float32)

@@ -8,8 +8,8 @@ class PIDController:
     '''
     def __init__(self) -> None:
         self.q_nominal = np.array([0.0, 0.9, -1.8,   #1.FL                
-                                    -0.18, 0.73, -1.85,   #2.FR
-                                    +0.18, 0.73, -1.85,   #3.RL
+                                    -0.18, 1.40, -2.52,   #2.FR
+                                    +0.18, 1.40, -2.52,  #3.RL
                                     0.0, 0.9, -1.8]   #4.RR
                                    ,dtype=np.float32)
         self.kp = np.array([25,25,25] * 4, dtype=np.float32) * 10
