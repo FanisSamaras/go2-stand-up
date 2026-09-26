@@ -17,7 +17,13 @@ PROPRIOCEPTIVE_OBS = (
     "qvel_js"
 )
 
-def create_env(scene:str = "flat", state_obs_names:str = "full_state")->NewEnv:
+EXTERNAL_DISTURBANCES ={
+    "type":"reset",
+    "x":(-40.,40.),
+    "y":(-40.,40.),
+}
+
+def create_env(scene:str = "flat", state_obs_names:str = "full_state", disturbances:dict = None)->NewEnv:
     """
     Creates the environment
     - scene : *`"flat"`* | `"perlin"`
@@ -48,5 +54,6 @@ def create_env(scene:str = "flat", state_obs_names:str = "full_state")->NewEnv:
         base_vel_command_type="human",
         sensors=(PatchedIMU,),
         sensors_kwargs=(imu_kwargs,),
-        legs_order=("FL","FR","RL","RR")
+        legs_order=("FL","FR","RL","RR"),
+        external_disturbances_kwargs = disturbances
     )

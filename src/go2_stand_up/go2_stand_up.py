@@ -8,8 +8,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 N_ENVS = 4
-MAX_STEPS = 2_000_000
-EPISODE_LENGTH = 2000
+MAX_STEPS = 3_000_000
+EPISODE_LENGTH = 3000
 SAVE_INTERVAL = 100_000
 ACTION_SCALE = 0.3
 DECIMATION = 4

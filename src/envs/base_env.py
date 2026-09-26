@@ -38,7 +38,6 @@ class NewEnv(QuadrupedEnv):
         self.undesired_leg_pair = undesired_leg_pair
         self._last_action_for_reward = np.zeros(12)
         self._consecutive_legs_on_ground = 0
-        self._time_since_violation = 0.0
 
     def set_leg_pair(self,desired_leg_pair:tuple,undesired_leg_pair:tuple):
         self.desired_leg_pair = desired_leg_pair
@@ -61,11 +60,9 @@ class NewEnv(QuadrupedEnv):
     def reset(self, qpos = None, qvel = None, seed = None, random = True, options = None):
         self._consecutive_legs_on_ground = 0
         self._last_action_for_reward = np.zeros(12)
-        self._time_since_violation = 0.0
         return super().reset(qpos, qvel, seed, random, options)
 
     def step(self, action):
-        self._time_since_violation += self.simulation_time
         return super().step(action)
 
     def _compute_reward(self):
@@ -88,19 +85,20 @@ class NewEnv(QuadrupedEnv):
         alive_bonus = 1.0
         first_desired_foot_contact_reward = 0.0
         second_desired_foot_contact_reward = 0.0
-        both_desired_foot_reward = 0.0
+        first_undesired_foot_contact_penalty = 0.0
+        second_undesired_foot_contact_penalty = 0.0
 
         #linear/Angular Velocity Reward
         lin_vel = self.base_lin_vel(frame="base")[:2]
         ang_vel = self.base_ang_vel(frame="base")[:2]
-        sigma_lin_vel = 0.25
+        sigma_lin_vel = 0.20
         sigma_ang_vel = 0.25
         lin_vel_reward = np.exp(-np.sum(lin_vel ** 2)/(2 * sigma_lin_vel ** 2))
         ang_vel_reward = np.exp(-np.sum(ang_vel ** 2)/(2 * sigma_ang_vel ** 2))
 
         #Height Penalty
         height = self.com[2]
-        target_height = 0.31
+        target_height = 0.27
         sigma_height = 0.08
         height_err = max(0.0, target_height - height)
         height_penalty = 1.0 - np.exp(-(height_err ** 2) / (2 * sigma_height ** 2))
@@ -114,6 +112,13 @@ class NewEnv(QuadrupedEnv):
         roll_pitch_sigma = 0.10
         roll_pitch_ang_vel_penalty =1 - np.exp(-np.sum(roll_pitch_ang_vel ** 2)/(2 * roll_pitch_sigma ** 2))
 
+        # "Kebab" pose
+        # roll_angle = self.mjData.qpos[3]
+        # pitch_angle = self.mjData.qpos[4]
+        # roll_pitch_sigma = 0.10
+        # roll_angle_penalty = 1 - np.exp(-(roll_angle ** 2)/(2 * roll_pitch_sigma ** 2))
+        # pitch_angle_penalty = 1 - np.exp(-(pitch_angle ** 2)/(2 * roll_pitch_sigma ** 2))
+
         # high torque penalty
         tau = self.torque_ctrl_setpoint
         torque_penalty = np.sum(tau **2)
@@ -126,21 +131,28 @@ class NewEnv(QuadrupedEnv):
         com_offset = 1
 
         #Desired/Undesired Leg contact Reward/Penalty
+        if leg_contacts[self.desired_leg_pair[0]]:
+            first_desired_foot_contact_reward = 0.5
+        if leg_contacts[self.desired_leg_pair[1]]:
+            second_desired_foot_contact_reward = 0.5
+        if leg_contacts[self.undesired_leg_pair[0]]:
+            first_undesired_foot_contact_penalty = 1.0
+        if leg_contacts[self.undesired_leg_pair[1]]:
+            second_undesired_foot_contact_penalty = 1.0
+
         if contact_count == 2:
             if leg_contacts[self.desired_leg_pair[0]]:
                 first_desired_foot_contact_reward = 1.0
             if leg_contacts[self.desired_leg_pair[1]]:
                 second_desired_foot_contact_reward = 1.0
-            if leg_contacts[self.desired_leg_pair[0]] and leg_contacts[self.desired_leg_pair[1]]:
-                both_desired_foot_reward = 1.0
-        if contact_count!= 2:
-            self._time_since_violation = 0.0
-            if contact_count == 3: feet_contact_penalty = 1.25
-            if contact_count == 4: feet_contact_penalty = 1.5
-            if contact_count <= 1: feet_contact_penalty = 2.
 
-        #time
-        airtime_reward = min(self._time_since_violation, 2.)
+        feet_contact_reward = first_desired_foot_contact_reward + second_desired_foot_contact_reward
+        feet_contact_penalty = first_undesired_foot_contact_penalty + second_undesired_foot_contact_penalty
+
+        # if contact_count!= 2:
+        #     if contact_count == 3: feet_contact_penalty = 1.25
+        #     if contact_count == 4: feet_contact_penalty = 1.5
+        #     if contact_count <= 1: feet_contact_penalty = 2.
 
         # Center Of Mass (COM) Reward
         sigma_com = 0.05
@@ -169,6 +181,8 @@ class NewEnv(QuadrupedEnv):
         feet_one_reward = np.exp(-(feet_one_err ** 2) / (2 * feet_sigma ** 2))
         feet_two_reward = np.exp(-(feet_two_err ** 2) / (2 * feet_sigma ** 2))
         feet_height_reward = (feet_one_reward + feet_two_reward) / 2
+        feet_difference_penalty = min(abs(feet_one_err - feet_two_err),1.0)
+
         # logging = {
         #     "episode":self.step_num,
         #     "alive_bonus": 0.2,
@@ -198,20 +212,18 @@ class NewEnv(QuadrupedEnv):
         # print(airtime_reward)
         return float(
             0.2 * alive_bonus + 
-            0.25 * first_desired_foot_contact_reward +
-            0.25 * second_desired_foot_contact_reward +
-            0.5 * both_desired_foot_reward +
+            0.5 * feet_contact_reward +
             0.3 * lin_vel_reward +
             0.4 * ang_vel_reward +
-            2.0 * center_of_mass_reward + #### from 2.0
-            1.5 * feet_height_reward + ### from 0.5
-            1.5 * airtime_reward + # 0. to 2. (seconds)
-            -5.0 * invalid_contact_penalty + #### from 5.0
+            2.0 * center_of_mass_reward + 
+            1.5 * feet_height_reward + 
+            -5.0 * invalid_contact_penalty + 
             -1.0 * height_penalty +
-            -4.0 * feet_contact_penalty + ### from 2.0
-            -0.5 * z_vel_penalty + # MAYBE
-            -0.25 * roll_pitch_ang_vel_penalty + # MAYBE
-            -1e-4 * torque_penalty # MAYBE
+            -2.0 * feet_contact_penalty + 
+            -0.8 * feet_difference_penalty +
+            -0.5 * z_vel_penalty + 
+            -0.25 * roll_pitch_ang_vel_penalty + 
+            -1e-4 * torque_penalty +
             -3e-4 * action_rate_penalty
             )
 

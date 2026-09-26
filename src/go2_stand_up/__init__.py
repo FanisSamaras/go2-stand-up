@@ -5,7 +5,7 @@ def train_dog() -> None:
     train()
 
 def load_dog() -> None:
-    load_test(num_of_steps=2_000_000,steps=5000)
+    load_test(num_of_steps=3_000_000,steps=2000)
 
 def resume_train_dog():
     resume_training()
