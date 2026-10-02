@@ -10,9 +10,12 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "gym-quadruped>=1.1.5",
+    "imitation>=1.0.0",
     "matplotlib>=3.11.1",
     "mujoco>=3.12.0",
     "numpy>=2.5.2",
+    "onnx>=1.23.1",
+    "onnxruntime>=1.30.0",
     "stable-baselines3[extra]>=2.9.0",
     "torch>=2.14.0",
     "torchvision>=0.29.0",

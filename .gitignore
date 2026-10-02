@@ -13,6 +13,13 @@ wheels/
 .vscode
 
 # checkpoints
+*.onnx
 *.pt
 *.zip
 *.pkl
+*.npz
+*.json
+
+#tensor
+tensor/
+policies/checkpoint_dagger/
