@@ -57,6 +57,9 @@ class NewEnv(QuadrupedEnv):
         self.undesired_leg_pair = undesired_leg_pair
         self._last_action_for_reward = np.zeros(12)
         self._step_count_episode = 0
+        self._correct_stance = 0.0
+        self._correct_stance_counter = 0
+        self._incorrect_stance_count = 200
 
     def set_leg_pair(self, desired_leg_pair: tuple[int], undesired_leg_pair: tuple[int]):
         self.desired_leg_pair = desired_leg_pair
@@ -64,10 +67,20 @@ class NewEnv(QuadrupedEnv):
 
     def reset(self, qpos=None, qvel=None, seed=None, random=True, options=None):
         self._step_count_episode = 0
+        self._correct_stance = 0.0
+        self._correct_stance_counter = 0
+        self._incorrect_stance_count = 200
         return super().reset(qpos, qvel, seed, random, options)
 
     def step(self, action):
         obs, reward, terminated, truncated, info = super().step(action)
+        if self._correct_stance:
+            self._correct_stance_counter += 1
+        if self._correct_stance_counter > 1000 and not self._correct_stance:
+            self._incorrect_stance_count -= 1
+        if self._incorrect_stance_count < 0:
+            terminated = True
+        
         return obs, reward, terminated, truncated, info
 
     def _compute_reward(self):
@@ -159,9 +172,9 @@ class NewEnv(QuadrupedEnv):
         com_support_reward = np.exp(-com_distance**2 / (2 * 0.05**2))
 
         correct_stance = 1.0 if (desired_contacts == 2 and undesired_contacts == 0 and knee_contact_penalty == 0
-                                 and u1_height > 0.16 and u2_height > 0.16) else 0.0
+                                 and u1_height > 0.1 and u2_height > 0.1) else 0.0
         com_support_reward *= correct_stance
-
+        self._correct_stance = correct_stance
 
         # 6. Final Reward Weighting
         reward = (
@@ -170,9 +183,9 @@ class NewEnv(QuadrupedEnv):
             2.0 * u2_height_reward +
             1.0 * correct_stance +
             1.0 * com_support_reward +
-            -0.3 * lin_vel_err +
-            -0.7 * roll_pitch_err +
-            -0.2 * yaw_rate_penalty +
+            -0.4 * lin_vel_err +
+            -0.2 * roll_pitch_err +
+            -0.4 * yaw_rate_penalty +
             -2.0 * undesired_contacts +
             -5.0 * knee_contact_penalty
             -0.5 * desired_feet_slip_penalty +

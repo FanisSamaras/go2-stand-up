@@ -8,10 +8,17 @@ class PIDController:
     \n Leg order FL, FR, RL, RR
     '''
     def __init__(self) -> None:
+        # self.q_nominal = np.array(
+        #             [0.0, 0.9, -1.8,
+        #             0.0, 0.9, -1.8,
+        #             0.0, 0.9, -1.8,
+        #             0.0, 0.9, -1.8],
+        #             dtype=np.float32,
+        #         )
         self.q_nominal = np.array(
                     [0.0, 0.9, -1.8,
-                    0.0, 0.9, -1.8,
-                    0.0, 0.9, -1.8,
+                    0.0, 1.5, -2.4,
+                    0.0, 1.5, -2.4,
                     0.0, 0.9, -1.8],
                     dtype=np.float32,
                 )

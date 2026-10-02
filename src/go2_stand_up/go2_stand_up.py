@@ -62,7 +62,7 @@ def train():
         n_steps=4096//2,
         batch_size=512*2,
         n_epochs=5,
-        gamma=0.995,
+        gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
         clip_range_vf=None,
