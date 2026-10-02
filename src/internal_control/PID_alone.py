@@ -7,13 +7,9 @@ class PIDController:
     \n Leg order FL, FR, RL, RR
     '''
     def __init__(self) -> None:
-        self.q_nominal = np.array([0.0, 0.9, -1.8,   #1.FL                
-                                    -0.18, 1.40, -2.52,   #2.FR
-                                    +0.18, 1.40, -2.52,  #3.RL
-                                    0.0, 0.9, -1.8]   #4.RR
-                                   ,dtype=np.float32)
-        self.kp = np.array([25,25,25] * 4, dtype=np.float32) * 10
-        self.kd = self.kp / 18
+        self.q_nominal = np.array([0.0,0.9,-1.8]*4,dtype=np.float32)
+        self.kp = np.array([20,35,45] * 4, dtype=np.float32)
+        self.kd = np.sqrt(self.kp)
 
     def get_action(self,q,dq) -> NDArray:
         action = self.kp * (self.q_nominal - q) - self.kd * dq

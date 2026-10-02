@@ -14,7 +14,7 @@ from gym_quadruped import robot_cfgs
 cfg = robot_cfgs.get_robot_config("go2")
 
 MODEL_PATH = cfg.mjcf_filename
-MODEL_PATH = "./.venv/lib/python3.14/site-packages/gym_quadruped/robot_model/go2/go2.xml"
+MODEL_PATH = "./.venv/lib/site-packages/gym_quadruped/robot_model/go2/go2.xml"
 # MODEL_PATH = "src/models/go2"
 
 LEG_ORDER = ["FL", "FR", "RL", "RR"]

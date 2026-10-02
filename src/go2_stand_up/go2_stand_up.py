@@ -1,19 +1,20 @@
 from envs import create_env, FULL_STATE_OBS
 from envs.base_env import SB3QuadrupedWrapper  
 from internal_control.PID import PIDController
+from numpy import integer,floating
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import CheckpointCallback,BaseCallback,CallbackList
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize, SubprocVecEnv
 
 
-N_ENVS = 4
-MAX_STEPS = 3_000_000
-EPISODE_LENGTH = 3000
+N_ENVS = 8
+MAX_STEPS = 5_000_000
+EPISODE_LENGTH = 2000
 SAVE_INTERVAL = 100_000
 ACTION_SCALE = 0.3
 DECIMATION = 4
-TERMINATION_PENALTY = 500.
+TERMINATION_PENALTY = 300
 
 CHECKPOINT_DIR = "./src/policies/checkpoint/"
 TENSORBOARD_DIR = "./src/go2_stand_up/tensor"
@@ -33,30 +34,47 @@ def make_env():
     return Monitor(env)  # logs ep_rew_mean / ep_len_mean
 
 
+class RewardLoggingCallback(BaseCallback):
+
+    def _on_step(self) -> bool:
+
+        info = self.locals["infos"][0]
+        terms = info.get("reward_terms",{})
+
+        for key,value in terms.items():
+            if isinstance(value, (int,float,integer,floating)):
+                self.logger.record(
+                    f"reward_terms/{key}",float(value)
+                )
+
+        return True
+
+
+
 def train():
-    base_vec = DummyVecEnv([make_env for _ in range(N_ENVS)])
-    vec_env = VecNormalize(base_vec, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
+    base_vec = SubprocVecEnv([make_env for _ in range(N_ENVS)])
+    vec_env = VecNormalize(base_vec, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.995)
 
     agent = PPO(
         policy="MlpPolicy",
         env=vec_env,
         learning_rate=3e-4,
-        n_steps=4096,
-        batch_size=512,
+        n_steps=4096//2,
+        batch_size=512*2,
         n_epochs=5,
-        gamma=0.99,
+        gamma=0.995,
         gae_lambda=0.95,
         clip_range=0.2,
         clip_range_vf=None,
         normalize_advantage=True,
-        ent_coef=0.01,
+        ent_coef=0.0,
         vf_coef=0.5,
-        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
+        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256]),log_std_init = -1.0),
         tensorboard_log=TENSORBOARD_DIR,
         verbose=1,
         device="cpu",
     )
-
+    
     checkpoint_callback = CheckpointCallback(
         save_freq=max(SAVE_INTERVAL // N_ENVS, 1),
         save_path=CHECKPOINT_DIR,
@@ -64,14 +82,18 @@ def train():
         save_vecnormalize=True,
         verbose=2,
     )
+    reward_logging_callback = RewardLoggingCallback()
+    # agent = PPO.load("src\policies\checkpoint\ppo_go2_1000000_steps.zip",env=vec_env,device="cpu")
 
-    agent.learn(total_timesteps=MAX_STEPS, callback=checkpoint_callback)
+    agent.learn(total_timesteps=MAX_STEPS, callback=checkpoint_callback,reset_num_timesteps=True)
     agent.save(CHECKPOINT_DIR + "final")
     vec_env.save(CHECKPOINT_DIR + "final_vecnormalize.pkl")
 
 
 def load_test(num_of_steps:int, steps: int = 2000):
+    total_rew = 0
     base_vec = DummyVecEnv([make_env])
+    base_vec.envs[0].unwrapped.ASSIST_START = 0.0
     vec_env = VecNormalize.load(f"{CHECKPOINT_DIR}ppo_go2_vecnormalize_{num_of_steps}_steps.pkl", base_vec)
     vec_env.training = False
     vec_env.norm_reward = False
@@ -79,17 +101,19 @@ def load_test(num_of_steps:int, steps: int = 2000):
     agent = PPO.load(f"{CHECKPOINT_DIR}ppo_go2_{num_of_steps}_steps.zip", env=vec_env, device="cpu")
     obs = vec_env.reset()
     for _ in range(steps):
-        action, _ = agent.predict(obs, deterministic=True)
+        action, _ = agent.predict(obs, deterministic=False)
         obs, reward, done, info = vec_env.step(action)
+        total_rew += reward
         base_vec.envs[0].render()
         if done[0]:
             break
+    print(f"Final Reward: {total_rew}")
 
 def resume_training(extra_timesteps: int = MAX_STEPS):
-    base_vec = DummyVecEnv([make_env for _ in range(N_ENVS)])
+    base_vec = SubprocVecEnv([make_env for _ in range(N_ENVS)])
 
     vec_env = VecNormalize.load(
-        f"{CHECKPOINT_DIR}final_vecnormalize.pkl",
+        f"{CHECKPOINT_DIR}final_resumed_vecnormalize.pkl",
         base_vec,
     )
 
@@ -97,10 +121,11 @@ def resume_training(extra_timesteps: int = MAX_STEPS):
     vec_env.norm_reward = True
 
     agent = PPO.load(
-        f"{CHECKPOINT_DIR}final.zip",
+        f"{CHECKPOINT_DIR}final_resumed.zip",
         env=vec_env,
         device="cpu",
     )
+    agent.ent_coef = 0.0
 
     checkpoint_callback = CheckpointCallback(
         save_freq=max(SAVE_INTERVAL // N_ENVS, 1),
@@ -116,8 +141,8 @@ def resume_training(extra_timesteps: int = MAX_STEPS):
         reset_num_timesteps=False,
     )
 
-    agent.save(f"{CHECKPOINT_DIR}final_resumed")
-    vec_env.save(f"{CHECKPOINT_DIR}final_resumed_vecnormalize.pkl")
+    agent.save(f"{CHECKPOINT_DIR}final_resumed2")
+    vec_env.save(f"{CHECKPOINT_DIR}final_resumed2_vecnormalize.pkl")
 
 if __name__ == "__main__":
     pass

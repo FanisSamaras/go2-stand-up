@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 from enum import Enum
-from internal_control.PID_alone import PIDController
+from internal_control.PID import PIDController
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -28,14 +28,14 @@ print(obs.shape)
 
 def test():
     obs = flatten_obs(env.reset())
-    for _ in range(1000):
+    for i in range(1000):
         q = env.mjData.qpos[7:19]
         dq = env.mjData.qvel[6:18]
         action = pid_controller.get_action(q=q,dq=dq)
         next_obs, reward, terminated, truncated, info = env.step(action=action)
         done = truncated or terminated
-        obs = next_obs
-        obs = flatten_obs(obs=obs)
+        print(reward)
+        obs = flatten_obs(next_obs)
         env.render()
 
 

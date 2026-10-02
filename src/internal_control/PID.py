@@ -8,13 +8,14 @@ class PIDController:
     \n Leg order FL, FR, RL, RR
     '''
     def __init__(self) -> None:
-        self.q_nominal = np.array([0.0, 0.9, -1.8,   #1.FL                
-                                  -0.1, 1.0, -2.0,  #2.FR
-                                   0.1, 1.0, -2.0,  #3.RL
-                                   0.0, 0.9, -1.8]   #4.RR
+        self.q_nominal = np.array([0.0, 0.90, -1.80,   #1.FL                
+                                   0.0, 0.90, -1.80,  #2.FR
+                                   0.0, 0.90, -1.80,  #3.RL
+                                   0.0, 0.90, -1.80]   #4.RR
                                 ,dtype=np.float32)
-        self.kp = np.array([20,35,45] * 4, dtype=np.float32) * 4
-        self.kd = self.kp/18
+        # self.q_nominal_2 = np.array([0.0, 0.93, -2.05,  0.0, 0.51, -1.12,  0.0, 0.62, -1.12,  0.0, 1.12, -2.05],dtype=np.float32)
+        self.kp = 40
+        self.kd = 1
         self.torque_limit = np.array([23.7, 23.7, 45.3] * 4, dtype=np.float32)
 
     def get_action(self, q, dq, q_desired=None) -> NDArray:
@@ -27,4 +28,4 @@ class PIDController:
         return np.clip(action, -self.torque_limit, self.torque_limit)
 
 if __name__ == "__main__":
-    print("This file sets the internal PID controller and is not meant to be executed ")
+    print("This file sets the internal PID controller and is not meant to be executed")
