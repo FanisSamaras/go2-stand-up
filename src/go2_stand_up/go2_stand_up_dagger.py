@@ -80,7 +80,7 @@ DAGGER_WINDOW_ROUNDS = 2
 REUSE_SAVED_EXPERT_DATA = True
 REUSE_BC_INITIALIZATION = True
 
-MODE = "visualize" # train | tune | visualize
+MODE = "visualize"  # train | tune | visualize
 
 VISUALIZE_POLICY = CHECKPOINT_DIR / "dagger_ppo_150000_steps.zip"
 
@@ -102,7 +102,6 @@ def memory_report(label=""):
     """
 
     try:
-
         import psutil
 
         process = psutil.Process()
@@ -113,7 +112,7 @@ def memory_report(label=""):
             except psutil.Error:
                 pass
         total_mb = total / (1024**2)
-        print(f"[RAM] {label}: " f"{total_mb:.1f} MB " f"(parent + children)")
+        print(f"[RAM] {label}: {total_mb:.1f} MB (parent + children)")
 
         return
 
@@ -125,7 +124,7 @@ def memory_report(label=""):
         for line in status.splitlines():
             if line.startswith("VmRSS:"):
                 kb = int(line.split()[1])
-                print(f"[RAM] {label}: " f"{kb / 1024:.1f} MB " f"(parent only)")
+                print(f"[RAM] {label}: {kb / 1024:.1f} MB (parent only)")
 
                 return
 
@@ -173,7 +172,6 @@ def make_parallel_dagger_env(
 
 
 class ONNXExpertPolicy(BasePolicy):
-
     def __init__(
         self,
         path,
@@ -222,14 +220,10 @@ class ONNXExpertPolicy(BasePolicy):
         )
 
         if obs.ndim == 1:
-
             obs = obs[None, :]
 
         if obs.ndim != 2 or obs.shape[1] != OBS_DIM:
-
-            raise RuntimeError(
-                f"Expected observation " f"(*, {OBS_DIM}), " f"got {obs.shape}"
-            )
+            raise RuntimeError(f"Expected observation (*, {OBS_DIM}), got {obs.shape}")
 
         batch_dim = self.input_shape[0]
 
@@ -242,11 +236,9 @@ class ONNXExpertPolicy(BasePolicy):
         )
 
         if fixed_batch_one and obs.shape[0] > 1:
-
             actions = []
 
             for ob in obs:
-
                 action = self.session.run(
                     [self.output_name],
                     {self.input_name: ob[None, :]},
@@ -268,7 +260,6 @@ class ONNXExpertPolicy(BasePolicy):
             )
 
         else:
-
             actions = self.session.run(
                 [self.output_name],
                 {self.input_name: obs},
@@ -280,7 +271,6 @@ class ONNXExpertPolicy(BasePolicy):
             )
 
         if actions.ndim == 1:
-
             actions = actions[None, :]
 
         expected = (
@@ -289,9 +279,8 @@ class ONNXExpertPolicy(BasePolicy):
         )
 
         if actions.shape != expected:
-
             raise RuntimeError(
-                f"ONNX expert produced " f"{actions.shape}; " f"expected {expected}"
+                f"ONNX expert produced {actions.shape}; expected {expected}"
             )
 
         actions = np.clip(
@@ -330,7 +319,6 @@ class ONNXExpertPolicy(BasePolicy):
             "output_name",
             "input_shape",
         ):
-
             state.pop(
                 key,
                 None,
@@ -399,7 +387,6 @@ def reset_and_settle(
     settled = 0
 
     while settled < WARMUP_STEPS:
-
         (
             obs,
             _,
@@ -409,13 +396,11 @@ def reset_and_settle(
         ) = env.step(zero_action)
 
         if terminated or truncated:
-
             obs, info = env.reset()
 
             settled = 0
 
         else:
-
             settled += 1
 
     return obs
@@ -461,7 +446,6 @@ def collect_expert_worker(
     episode = 0
 
     for _ in range(n_steps):
-
         obs_array = np.asarray(
             obs,
             dtype=np.float32,
@@ -478,7 +462,6 @@ def collect_expert_worker(
         )
 
         if expert_action.ndim == 2:
-
             expert_action = expert_action[0]
 
         obs_buffer.append(obs_array.copy())
@@ -488,7 +471,6 @@ def collect_expert_worker(
         executed_action = expert_action.copy()
 
         if EXPERT_NOISE_STD > 0:
-
             executed_action += rng.normal(
                 0.0,
                 EXPERT_NOISE_STD,
@@ -521,7 +503,6 @@ def collect_expert_worker(
         done_buffer.append(done)
 
         if done:
-
             episode += 1
 
             obs = reset_and_settle(
@@ -530,7 +511,6 @@ def collect_expert_worker(
             )
 
         else:
-
             obs = next_obs
 
     env.close()
@@ -615,7 +595,6 @@ def collect_expert_data():
         max_workers=n_workers,
         mp_context=ctx,
     ) as executor:
-
         shards = list(
             executor.map(
                 collect_expert_worker,
@@ -699,7 +678,6 @@ def load_expert_data():
 def collect_or_load_expert_data():
 
     if REUSE_SAVED_EXPERT_DATA and EXPERT_DATASET.exists():
-
         return load_expert_data()
 
     return collect_expert_data()
@@ -748,13 +726,11 @@ def latest_sb3_dagger_checkpoint():
     paths = list(CHECKPOINT_DIR.glob("dagger_round_*.zip"))
 
     if not paths:
-
         return None
 
     def number(path):
 
         try:
-
             return int(
                 path.stem.rsplit(
                     "_",
@@ -763,7 +739,6 @@ def latest_sb3_dagger_checkpoint():
             )
 
         except ValueError:
-
             return -1
 
     return max(
@@ -812,7 +787,6 @@ def recent_dagger_window(
         trainer.bc_trainer,
         "_demo_data_loader",
     ):
-
         trainer.bc_trainer._demo_data_loader = None
 
     trainer._last_loaded_round = max(
@@ -837,7 +811,6 @@ def compact_trainer_before_save(
         trainer.bc_trainer,
         "_demo_data_loader",
     ):
-
         trainer.bc_trainer._demo_data_loader = None
 
     trainer._last_loaded_round = max(
@@ -877,7 +850,6 @@ def reconstruct_dagger_trainer(
         trainer.bc_trainer,
         "_bc_logger",
     ):
-
         trainer.bc_trainer._bc_logger._logger = custom_logger
 
     trainer.bc_trainer.batch_size = BC_BATCH_SIZE
@@ -916,7 +888,6 @@ def demo_dir_stats(
     demo_dir = Path(demo_dir)
 
     if not demo_dir.exists():
-
         return (
             0,
             0,
@@ -926,11 +897,9 @@ def demo_dir_stats(
     n_transitions = 0
 
     for path in sorted(demo_dir.glob("*.npz")):
-
         trajectories = imitation_serialize.load(path)
 
         for traj in trajectories:
-
             n_trajectories += 1
 
             n_transitions += len(traj.acts)
@@ -961,7 +930,6 @@ def recover_current_round(
     ) = demo_dir_stats(demo_dir)
 
     if n_trajectories == 0:
-
         return (
             trainer,
             student,
@@ -984,14 +952,13 @@ def recover_current_round(
         n_transitions,
     )
 
-    newer_ppo = CHECKPOINT_DIR / ("dagger_round_" f"{round_num + 1:03d}.zip")
+    newer_ppo = CHECKPOINT_DIR / (f"dagger_round_{round_num + 1:03d}.zip")
 
     complete = newer_ppo.exists() or (
         n_trajectories >= N_ENVS and n_transitions >= DAGGER_ROUND_STEPS
     )
 
     if not complete:
-
         print("Current round is incomplete.")
 
         print(
@@ -1003,7 +970,7 @@ def recover_current_round(
 
         free_memory()
 
-        print(f"Round {round_num} " "will be recollected.")
+        print(f"Round {round_num} will be recollected.")
 
         return (
             trainer,
@@ -1029,7 +996,6 @@ def recover_current_round(
     free_memory()
 
     if newer_ppo.exists():
-
         print(
             "Restoring existing PPO:",
             newer_ppo,
@@ -1047,7 +1013,6 @@ def recover_current_round(
         )
 
     else:
-
         sync_trainer_to_student(
             trainer,
             student,
@@ -1062,7 +1027,7 @@ def recover_current_round(
 
     free_memory()
 
-    sb3_path = CHECKPOINT_DIR / ("dagger_round_" f"{trainer.round_num:03d}")
+    sb3_path = CHECKPOINT_DIR / (f"dagger_round_{trainer.round_num:03d}")
 
     student.save(str(sb3_path))
 
@@ -1098,7 +1063,6 @@ def initialise_dagger(
     bc_zip = Path(str(BC_INITIALIZED) + ".zip")
 
     if REUSE_BC_INITIALIZATION and bc_zip.exists():
-
         print(
             "Loading existing BC policy:",
             bc_zip,
@@ -1111,7 +1075,6 @@ def initialise_dagger(
         )
 
     else:
-
         print("No BC checkpoint found.")
 
         print("Loading expert dataset for initial BC...")
@@ -1130,7 +1093,6 @@ def initialise_dagger(
         free_memory()
 
     if DAGGER_SCRATCH_DIR.exists():
-
         print(
             "Removing stale DAgger scratch:",
             DAGGER_SCRATCH_DIR,
@@ -1224,7 +1186,6 @@ def train_dagger():
     native_checkpoint = DAGGER_SCRATCH_DIR / "checkpoint-latest.pt"
 
     if native_checkpoint.exists():
-
         print("\nExisting native DAgger checkpoint found.")
 
         print("Skipping 300k expert dataset entirely.")
@@ -1242,7 +1203,6 @@ def train_dagger():
         latest_ppo = latest_sb3_dagger_checkpoint()
 
         if latest_ppo is not None:
-
             print(
                 "Loading PPO:",
                 latest_ppo,
@@ -1255,13 +1215,11 @@ def train_dagger():
             )
 
         else:
-
             bc_zip = Path(str(BC_INITIALIZED) + ".zip")
 
             if not bc_zip.exists():
-
                 raise FileNotFoundError(
-                    "No DAgger PPO checkpoint " "and no BC checkpoint."
+                    "No DAgger PPO checkpoint and no BC checkpoint."
                 )
 
             student = PPO.load(
@@ -1285,7 +1243,6 @@ def train_dagger():
         )
 
     else:
-
         trainer, student = initialise_dagger(env)
 
     free_memory()
@@ -1293,12 +1250,11 @@ def train_dagger():
     memory_report("after startup")
 
     while trainer.round_num < DAGGER_ROUNDS:
-
         current_round = trainer.round_num
 
         beta = trainer.beta_schedule(current_round)
 
-        print(f"DAGGER ROUND " f"{current_round} " f"(target {DAGGER_ROUNDS})")
+        print(f"DAGGER ROUND {current_round} (target {DAGGER_ROUNDS})")
 
         print(
             "beta:",
@@ -1371,7 +1327,7 @@ def train_dagger():
         # SAVE FULL PPO SECOND.
         # ----------------------------------------------------
 
-        sb3_path = CHECKPOINT_DIR / ("dagger_round_" f"{trainer.round_num:03d}")
+        sb3_path = CHECKPOINT_DIR / (f"dagger_round_{trainer.round_num:03d}")
 
         student.save(str(sb3_path))
 
@@ -1466,7 +1422,6 @@ def visualize_policy(
     obs = reset_and_settle(env)
 
     for step in range(steps):
-
         action, _ = model.predict(
             obs,
             deterministic=True,
@@ -1488,7 +1443,6 @@ def visualize_policy(
         env.render()
 
         if step % 100 == 0:
-
             print(
                 f"step={step:5d} "
                 f"reward="
@@ -1498,8 +1452,7 @@ def visualize_policy(
             )
 
         if terminated or truncated:
-
-            print(f"Episode terminated " f"at step {step}")
+            print(f"Episode terminated at step {step}")
 
             obs = reset_and_settle(env)
 

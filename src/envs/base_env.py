@@ -9,20 +9,23 @@ from enum import Enum
 from internal_control.PID import PIDController
 from pathlib import Path
 from filelock import FileLock
-import time,tempfile
+import time, tempfile
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 _orignial_imu_init = IMU.__init__
+
 
 def patched_imu_init(self, mj_model, mj_data, *args, **kwargs):
     mujoco.mj_forward(mj_model, mj_data)
     _orignial_imu_init(self, mj_model, mj_data, *args, **kwargs)
     self.step()
 
+
 class PatchedIMU(IMU):
     def __init__(self, mj_model, mj_data, *args, **kwargs):
         patched_imu_init(self, mj_model, mj_data, *args, **kwargs)
+
 
 class LegAssociation(Enum):
     FL = 0
@@ -30,29 +33,51 @@ class LegAssociation(Enum):
     RL = 2
     RR = 3
 
-_INIT_LOCK = str(Path(tempfile.gettempdir())/"go2_env_init.lock")
+
+_INIT_LOCK = str(Path(tempfile.gettempdir()) / "go2_env_init.lock")
+
 
 class NewEnv(QuadrupedEnv):
-
-
-    def __init__(self, robot, state_obs_names=..., scene='flat', sim_dt=0.002, base_vel_command_type='forward',
-                 ref_base_lin_vel=0.5, ref_base_ang_vel=0, ground_friction_coeff=1,
-                 legs_order=('FL', 'FR', 'RL', 'RR'), sensors=None, sensors_kwargs=None,
-                 external_disturbances_kwargs=None,
-                 desired_leg_pair=(LegAssociation.FL.value, LegAssociation.RR.value),
-                 undesired_leg_pair=(LegAssociation.FR.value, LegAssociation.RL.value)):
+    def __init__(
+        self,
+        robot,
+        state_obs_names=...,
+        scene="flat",
+        sim_dt=0.002,
+        base_vel_command_type="forward",
+        ref_base_lin_vel=0.5,
+        ref_base_ang_vel=0,
+        ground_friction_coeff=1,
+        legs_order=("FL", "FR", "RL", "RR"),
+        sensors=None,
+        sensors_kwargs=None,
+        external_disturbances_kwargs=None,
+        desired_leg_pair=(LegAssociation.FL.value, LegAssociation.RR.value),
+        undesired_leg_pair=(LegAssociation.FR.value, LegAssociation.RL.value),
+    ):
         for attempt in range(8):
             try:
-                with FileLock(_INIT_LOCK,timeout=120):
-                        super().__init__(robot, state_obs_names, scene, sim_dt, base_vel_command_type, ref_base_lin_vel,
-                                            ref_base_ang_vel, ground_friction_coeff, legs_order, sensors, sensors_kwargs,
-                                            external_disturbances_kwargs)
+                with FileLock(_INIT_LOCK, timeout=120):
+                    super().__init__(
+                        robot,
+                        state_obs_names,
+                        scene,
+                        sim_dt,
+                        base_vel_command_type,
+                        ref_base_lin_vel,
+                        ref_base_ang_vel,
+                        ground_friction_coeff,
+                        legs_order,
+                        sensors,
+                        sensors_kwargs,
+                        external_disturbances_kwargs,
+                    )
                 break
             except ValueError:
                 if attempt == 4:
                     raise
-                time.sleep(1.0+attempt)
-                    
+                time.sleep(1.0 + attempt)
+
         self.desired_leg_pair = desired_leg_pair
         self.undesired_leg_pair = undesired_leg_pair
         self._last_action_for_reward = np.zeros(12)
@@ -61,7 +86,9 @@ class NewEnv(QuadrupedEnv):
         self._correct_stance_counter = 0
         self._incorrect_stance_count = 200
 
-    def set_leg_pair(self, desired_leg_pair: tuple[int], undesired_leg_pair: tuple[int]):
+    def set_leg_pair(
+        self, desired_leg_pair: tuple[int], undesired_leg_pair: tuple[int]
+    ):
         self.desired_leg_pair = desired_leg_pair
         self.undesired_leg_pair = undesired_leg_pair
 
@@ -80,15 +107,15 @@ class NewEnv(QuadrupedEnv):
             self._incorrect_stance_count -= 1
         if self._incorrect_stance_count < 0:
             terminated = True
-        
+
         return obs, reward, terminated, truncated, info
 
     def _compute_reward(self):
         """
         Reward for balancing the Go2 on a diagonal leg pair.
         """
-        BASE_HEIGHT = 0.28
-        TARGET_UNDESIRED_LEG_HEIGHT = 0.22
+        BASE_HEIGHT = 0.3
+        TARGET_UNDESIRED_LEG_HEIGHT = 0.2
         FEET_OFFSET = 0.02
         SIGMA_HEIGHT = 0.05
         total_z_force = 0
@@ -96,22 +123,23 @@ class NewEnv(QuadrupedEnv):
         # 1. Base Motion Errors
         lin_vel = self.base_lin_vel(frame="world")
         ang_vel = self.base_ang_vel(frame="world")
-        
-        lin_vel_err = np.sum(lin_vel ** 2)
+
+        lin_vel_err = np.sum(lin_vel**2)
         roll, pitch, yaw = ang_vel
-        roll_pitch_err = roll ** 2 + pitch ** 2
-        yaw_rate_penalty = yaw ** 2  # Added yaw penalty
+        roll_pitch_err = roll**2 + pitch**2
+        yaw_rate_penalty = yaw**2  # Added yaw penalty
 
         # Center of Mass / Height reward
         height_err = self.com[2] - BASE_HEIGHT
-        height_reward = np.exp(-height_err ** 2 / (2 * SIGMA_HEIGHT ** 2))
+        height_reward = np.exp(-(height_err**2) / (2 * SIGMA_HEIGHT**2))
 
         # 2. Leg Pairs & Contact State Checks
         d1, d2 = self.desired_leg_pair
         u1, u2 = self.undesired_leg_pair
 
-
-        contacts_bool,_,ground_dict = self.feet_contact_state(frame="world",ground_reaction_forces=True)
+        contacts_bool, _, ground_dict = self.feet_contact_state(
+            frame="world", ground_reaction_forces=True
+        )
         ground_forces_per_leg = ground_dict.to_list()
         leg_contacts = contacts_bool.to_list()
         d1_contact = leg_contacts[d1]
@@ -128,8 +156,16 @@ class NewEnv(QuadrupedEnv):
         u2_height = feet_positions[u2][2] - FEET_OFFSET
 
         # Gives full reward (1.0) if foot is >= target height, smooth roll-off below
-        u1_height_reward = np.clip(u1_height / TARGET_UNDESIRED_LEG_HEIGHT, 0.0, 1.0) if undesired_contacts == 0 else 0.0
-        u2_height_reward = np.clip(u2_height / TARGET_UNDESIRED_LEG_HEIGHT, 0.0, 1.0) if undesired_contacts == 0 else 0.0
+        u1_height_reward = (
+            np.clip(u1_height / TARGET_UNDESIRED_LEG_HEIGHT, 0.0, 1.0)
+            if undesired_contacts == 0
+            else 0.0
+        )
+        u2_height_reward = (
+            np.clip(u2_height / TARGET_UNDESIRED_LEG_HEIGHT, 0.0, 1.0)
+            if undesired_contacts == 0
+            else 0.0
+        )
 
         # 4. Velocities of Grounded Feet (Prevent foot sliding)
         feet_velocities = self.feet_vel(frame="world").to_list()
@@ -142,21 +178,25 @@ class NewEnv(QuadrupedEnv):
         tau = self.mjData.ctrl.copy()
         joint_vel = self.mjData.qvel[6:18]
 
-        torque_penalty = np.sum(tau ** 2)
+        torque_penalty = np.sum(tau**2)
         work_penalty = np.sum(np.abs(joint_vel * tau))
 
         current_action = self.mjData.ctrl.copy()
-        action_rate_penalty = np.sum((self._last_action_for_reward - current_action) ** 2)
+        action_rate_penalty = np.sum(
+            (self._last_action_for_reward - current_action) ** 2
+        )
         self._last_action_for_reward = current_action
 
         # Knee contact penalty
-        knee_contact_penalty = max(0,self.mjData.ncon - (desired_contacts + undesired_contacts))
+        knee_contact_penalty = max(
+            0, self.mjData.ncon - (desired_contacts + undesired_contacts)
+        )
 
         # Ground forces big
         undesired_forces_1 = ground_forces_per_leg[u1]
         undesired_forces_2 = ground_forces_per_leg[u2]
 
-        stomp_penalty = np.sum(undesired_forces_1 ** 2) + np.sum(undesired_forces_2 ** 2)
+        stomp_penalty = np.sum(undesired_forces_1**2) + np.sum(undesired_forces_2**2)
 
         # CoM
         # Extract XY coordinates
@@ -165,41 +205,59 @@ class NewEnv(QuadrupedEnv):
         x0, y0 = self.com[0], self.com[1]
 
         numerator = np.abs((x2 - x1) * (y1 - y0) - (x1 - x0) * (y2 - y1))
-        denominator = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+        denominator = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
         com_distance = numerator / (denominator + 1e-6)
 
-        com_support_reward = np.exp(-com_distance**2 / (2 * 0.05**2))
+        com_support_reward = np.exp(-(com_distance**2) / (2 * 0.05**2))
 
-        correct_stance = 1.0 if (desired_contacts == 2 and undesired_contacts == 0 and knee_contact_penalty == 0
-                                 and u1_height > 0.1 and u2_height > 0.1) else 0.0
+        correct_stance = (
+            1.0
+            if (
+                desired_contacts == 2
+                and undesired_contacts == 0
+                and knee_contact_penalty == 0
+                and u1_height > 0.12
+                and u2_height > 0.12
+            )
+            else 0.0
+        )
         com_support_reward *= correct_stance
         self._correct_stance = correct_stance
 
         # 6. Final Reward Weighting
         reward = (
-            0.5 * height_reward +
-            2.0 * u1_height_reward +
-            2.0 * u2_height_reward +
-            1.0 * correct_stance +
-            1.0 * com_support_reward +
-            -0.4 * lin_vel_err +
-            -0.2 * roll_pitch_err +
-            -0.4 * yaw_rate_penalty +
-            -2.0 * undesired_contacts +
-            -5.0 * knee_contact_penalty
-            -0.5 * desired_feet_slip_penalty +
-            -1e-4 * torque_penalty +
-            -2e-4 * stomp_penalty + 
-            -1e-4 * action_rate_penalty +
-            -1e-4 * work_penalty
+            0.8 * height_reward
+            + 2.0 * u1_height_reward
+            + 2.0 * u2_height_reward
+            + 1.0 * correct_stance
+            + 1.0 * com_support_reward
+            + -0.4 * lin_vel_err
+            + -0.2 * roll_pitch_err
+            + -0.4 * yaw_rate_penalty
+            + -2.0 * undesired_contacts
+            + -5.0 * knee_contact_penalty
+            - 0.5 * desired_feet_slip_penalty
+            + -1e-4 * torque_penalty
+            + -4e-4 * stomp_penalty
+            + -1e-4 * action_rate_penalty
+            + -1e-4 * work_penalty
         )
 
         return float(reward)
-    
+
+
 class SB3QuadrupedWrapper(gym.Wrapper):
-    def __init__(self, env, obs_keys, pid=None, action_scale=0.3, decimation=4,
-                 max_episode_steps=2000, termination_penalty=10.0):
+    def __init__(
+        self,
+        env,
+        obs_keys,
+        pid=None,
+        action_scale=0.3,
+        decimation=4,
+        max_episode_steps=2000,
+        termination_penalty=10.0,
+    ):
         super().__init__(env)
         self.obs_keys = list(obs_keys)
         self.pid = pid if pid is not None else PIDController()
@@ -211,13 +269,23 @@ class SB3QuadrupedWrapper(gym.Wrapper):
 
         first_obs, _ = self._raw_reset()
         self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=self._flatten(first_obs).shape, dtype=np.float32)
-        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(12,), dtype=np.float32)
+            low=-np.inf,
+            high=np.inf,
+            shape=self._flatten(first_obs).shape,
+            dtype=np.float32,
+        )
+        self.action_space = gym.spaces.Box(
+            low=-1.0, high=1.0, shape=(12,), dtype=np.float32
+        )
 
     def _flatten(self, obs) -> NDArray:
         if isinstance(obs, dict):
             return np.concatenate(
-                [np.atleast_1d(obs[k]).astype(np.float32).ravel() for k in self.obs_keys])
+                [
+                    np.atleast_1d(obs[k]).astype(np.float32).ravel()
+                    for k in self.obs_keys
+                ]
+            )
         return np.asarray(obs, dtype=np.float32).ravel()
 
     def _raw_reset(self, **kwargs):

@@ -7,7 +7,7 @@ FULL_STATE_OBS = (
     "base_lin_vel",
     "base_ang_vel",
     "qpos_js",
-    "qvel_js"
+    "qvel_js",
 )
 
 IMITATION_OBS = (
@@ -17,7 +17,7 @@ IMITATION_OBS = (
     "velocity_cmd",
     "qpos_js",
     "qvel_js",
-    "last_action"
+    "last_action",
 )
 
 PROPRIOCEPTIVE_OBS = (
@@ -25,16 +25,22 @@ PROPRIOCEPTIVE_OBS = (
     "imu_acc",
     "imu_gyro",
     "qpos_js",
-    "qvel_js"
+    "qvel_js",
 )
 
-EXTERNAL_DISTURBANCES ={
-    "type":"reset",
-    "x":(-40.,40.),
-    "y":(-40.,40.),
+EXTERNAL_DISTURBANCES = {
+    "type": "reset",
+    "x": (-40.0, 40.0),
+    "y": (-40.0, 40.0),
 }
 
-def create_env(type:str = "base", scene:str = "flat", state_obs_names:str = "full_state", disturbances:dict = None)->NewEnv:
+
+def create_env(
+    type: str = "base",
+    scene: str = "flat",
+    state_obs_names: str = "full_state",
+    disturbances: dict = None,
+) -> NewEnv:
     """
     Creates the environment
     - type : *`"base"`* | `"imitation"`
@@ -47,8 +53,8 @@ def create_env(type:str = "base", scene:str = "flat", state_obs_names:str = "ful
     """
     imu_kwargs = {
         "accel_name": "imu_acc",
-        "gyro_name" : "imu_gyro",
-        "imu_site_name" : "imu"
+        "gyro_name": "imu_gyro",
+        "imu_site_name": "imu",
     }
     OBSERVATION_VARIANT = state_obs_names
 
@@ -57,9 +63,7 @@ def create_env(type:str = "base", scene:str = "flat", state_obs_names:str = "ful
     elif OBSERVATION_VARIANT == "proprioceptive":
         state_obs_name = PROPRIOCEPTIVE_OBS
     else:
-        raise ValueError(
-            f"Unknown observation variant: {OBSERVATION_VARIANT}"
-        )
+        raise ValueError(f"Unknown observation variant: {OBSERVATION_VARIANT}")
 
     if type == "base":
         return NewEnv(
@@ -69,8 +73,8 @@ def create_env(type:str = "base", scene:str = "flat", state_obs_names:str = "ful
             base_vel_command_type="human",
             sensors=(PatchedIMU,),
             sensors_kwargs=(imu_kwargs,),
-            legs_order=("FL","FR","RL","RR"),
-            external_disturbances_kwargs = disturbances
+            legs_order=("FL", "FR", "RL", "RR"),
+            external_disturbances_kwargs=disturbances,
         )
     elif type == "imitation":
         return ImitationEnv(
@@ -80,9 +84,8 @@ def create_env(type:str = "base", scene:str = "flat", state_obs_names:str = "ful
             base_vel_command_type="human",
             sensors=(PatchedIMU,),
             sensors_kwargs=(imu_kwargs,),
-            legs_order=("FL","FR","RL","RR"),
-            external_disturbances_kwargs = disturbances
+            legs_order=("FL", "FR", "RL", "RR"),
+            external_disturbances_kwargs=disturbances,
         )
     else:
-         print("invalid env type")
-    
+        print("invalid env type")

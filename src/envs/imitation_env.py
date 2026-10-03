@@ -10,23 +10,36 @@ from internal_control.PID import PIDController
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-JOINT_MAP = np.array([
-    3, 4, 5,     # FL
-    0, 1, 2,     # FR
-    9, 10, 11,   # RL
-    6, 7, 8      # RR
-])
+JOINT_MAP = np.array(
+    [
+        3,
+        4,
+        5,  # FL
+        0,
+        1,
+        2,  # FR
+        9,
+        10,
+        11,  # RL
+        6,
+        7,
+        8,  # RR
+    ]
+)
 
 _orignial_imu_init = IMU.__init__
 
+
 def patched_imu_init(self, mj_model, mj_data, *args, **kwargs):
-    mujoco.mj_forward(mj_model,mj_data) 
-    _orignial_imu_init(self, mj_model,mj_data,*args,**kwargs)
+    mujoco.mj_forward(mj_model, mj_data)
+    _orignial_imu_init(self, mj_model, mj_data, *args, **kwargs)
     self.step()
+
 
 class PatchedIMU(IMU):
     def __init__(self, mj_model, mj_data, *args, **kwargs):
         patched_imu_init(self, mj_model, mj_data, *args, **kwargs)
+
 
 class LegAssociation(Enum):
     FL = 0
@@ -34,20 +47,49 @@ class LegAssociation(Enum):
     RL = 2
     RR = 3
 
+
 class NewEnv(QuadrupedEnv):
-    def __init__(self, robot, state_obs_names = ..., scene = 'flat', sim_dt = 0.002, base_vel_command_type = 'forward', ref_base_lin_vel = 0.5, ref_base_ang_vel = 0, ground_friction_coeff = 1, legs_order = ('FL', 'FR', 'RL', 'RR'), sensors = None, sensors_kwargs = None, external_disturbances_kwargs = None,
-                 desired_leg_pair = (LegAssociation.RL.value,LegAssociation.RR.value),undesired_leg_pair = (LegAssociation.FL.value,LegAssociation.FR.value)):
-        super().__init__(robot, state_obs_names, scene, sim_dt, base_vel_command_type, ref_base_lin_vel, ref_base_ang_vel, ground_friction_coeff, legs_order, sensors, sensors_kwargs, external_disturbances_kwargs)
+    def __init__(
+        self,
+        robot,
+        state_obs_names=...,
+        scene="flat",
+        sim_dt=0.002,
+        base_vel_command_type="forward",
+        ref_base_lin_vel=0.5,
+        ref_base_ang_vel=0,
+        ground_friction_coeff=1,
+        legs_order=("FL", "FR", "RL", "RR"),
+        sensors=None,
+        sensors_kwargs=None,
+        external_disturbances_kwargs=None,
+        desired_leg_pair=(LegAssociation.RL.value, LegAssociation.RR.value),
+        undesired_leg_pair=(LegAssociation.FL.value, LegAssociation.FR.value),
+    ):
+        super().__init__(
+            robot,
+            state_obs_names,
+            scene,
+            sim_dt,
+            base_vel_command_type,
+            ref_base_lin_vel,
+            ref_base_ang_vel,
+            ground_friction_coeff,
+            legs_order,
+            sensors,
+            sensors_kwargs,
+            external_disturbances_kwargs,
+        )
         self.desired_leg_pair = desired_leg_pair
         self.undesired_leg_pair = undesired_leg_pair
         self._last_action_for_reward = np.zeros(12)
         self._consecutive_legs_on_ground = 0
 
-    def set_leg_pair(self,desired_leg_pair:tuple,undesired_leg_pair:tuple):
+    def set_leg_pair(self, desired_leg_pair: tuple, undesired_leg_pair: tuple):
         self.desired_leg_pair = desired_leg_pair
         self.undesired_leg_pair = undesired_leg_pair
 
-    def distance_from_line_2D(self,p1:NDArray,p2:NDArray,p3:NDArray)->float:
+    def distance_from_line_2D(self, p1: NDArray, p2: NDArray, p3: NDArray) -> float:
         """
         Calculates the distance of the 2D point p3 from the 2D line defined by the points p1, p2
         """
@@ -56,12 +98,12 @@ class NewEnv(QuadrupedEnv):
         y1 = p1[1]
         y2 = p2[1]
 
-        numerator = abs((y2-y1)*p3[0] - (x2-x1)*p3[1] + x2*y1 - y2*x1)
-        denominator = ((y2-y1)**2 + (x2-x1)**2)**0.5
+        numerator = abs((y2 - y1) * p3[0] - (x2 - x1) * p3[1] + x2 * y1 - y2 * x1)
+        denominator = ((y2 - y1) ** 2 + (x2 - x1) ** 2) ** 0.5
 
-        return numerator/max(denominator,1e-6)
+        return numerator / max(denominator, 1e-6)
 
-    def reset(self, qpos = None, qvel = None, seed = None, random = True, options = None):
+    def reset(self, qpos=None, qvel=None, seed=None, random=True, options=None):
         self._consecutive_legs_on_ground = 0
         self._last_action_for_reward = np.zeros(12)
         return super().reset(qpos, qvel, seed, random, options)
@@ -70,49 +112,51 @@ class NewEnv(QuadrupedEnv):
         return super().step(action)
 
     def _compute_reward(self):
-        '''
+        """
         The reward function for the learning process of the go2 quadruped to stand on the desired pair of legs
 
-        ### Reward function terms: 
+        ### Reward function terms:
         \t#### Reward terms:
             1. lin_vel_reward (float): Reward for the go2 having close to 0 linear velocity, corresponding factor: 0.3
             2. ang_vel_reward (float): Reward for the go2 having close to 0 angular velocity, corresponding factor: 0.4
             3.
 
         \t#### Penalty terms:
-        
+
         ### Returns:
             something
-        '''
+        """
 
         # Value initialization
         alive_bonus = 1.0
         first_desired_foot_contact_reward = 0.0
         second_desired_foot_contact_reward = 0.0
 
-        #linear/Angular Velocity Reward
+        # linear/Angular Velocity Reward
         lin_vel = self.base_lin_vel(frame="base")[:2]
         ang_vel = self.base_ang_vel(frame="base")[:2]
         sigma_lin_vel = 0.20
         sigma_ang_vel = 0.25
-        lin_vel_reward = np.exp(-np.sum(lin_vel ** 2)/(2 * sigma_lin_vel ** 2))
-        ang_vel_reward = np.exp(-np.sum(ang_vel ** 2)/(2 * sigma_ang_vel ** 2))
+        lin_vel_reward = np.exp(-np.sum(lin_vel**2) / (2 * sigma_lin_vel**2))
+        ang_vel_reward = np.exp(-np.sum(ang_vel**2) / (2 * sigma_ang_vel**2))
 
-        #Height Penalty
+        # Height Penalty
         height = self.com[2]
         target_height = 0.27
         sigma_height = 0.08
         height_err = max(0.0, target_height - height)
-        height_penalty = 1.0 - np.exp(-(height_err ** 2) / (2 * sigma_height ** 2))
+        height_penalty = 1.0 - np.exp(-(height_err**2) / (2 * sigma_height**2))
 
-        # Z_velocity Error 
+        # Z_velocity Error
         base_z_lin_vel = self.base_lin_vel(frame="base")[2]
-        z_vel_penalty = base_z_lin_vel ** 2
+        z_vel_penalty = base_z_lin_vel**2
 
-        # "kebab" rotation 
+        # "kebab" rotation
         roll_pitch_ang_vel = self.base_ang_vel(frame="base")[:2]
         roll_pitch_sigma = 0.10
-        roll_pitch_ang_vel_penalty =1 - np.exp(-np.sum(roll_pitch_ang_vel ** 2)/(2 * roll_pitch_sigma ** 2))
+        roll_pitch_ang_vel_penalty = 1 - np.exp(
+            -np.sum(roll_pitch_ang_vel**2) / (2 * roll_pitch_sigma**2)
+        )
 
         # "Kebab" pose
         # roll_angle = self.mjData.qpos[3]
@@ -124,15 +168,17 @@ class NewEnv(QuadrupedEnv):
         # high torque penalty
         tau = self.torque_ctrl_setpoint
         torque_limit = 33.5
-        torque_penalty = np.sum(tau **2)/torque_limit**2 # normalised
+        torque_penalty = np.sum(tau**2) / torque_limit**2  # normalised
 
         # correct legs contact
-        leg_contacts, contact_positions = self.feet_contact_state(frame="base",ground_reaction_forces=False)
+        leg_contacts, contact_positions = self.feet_contact_state(
+            frame="base", ground_reaction_forces=False
+        )
         leg_contacts = leg_contacts.to_list()
         contact_count = sum(leg_contacts)
         com_offset = 1
 
-        #Desired/Undesired Leg contact Reward/Penalty
+        # Desired/Undesired Leg contact Reward/Penalty
         if leg_contacts[self.desired_leg_pair[0]]:
             first_desired_foot_contact_reward = 0.5
         if leg_contacts[self.desired_leg_pair[1]]:
@@ -144,7 +190,9 @@ class NewEnv(QuadrupedEnv):
             if leg_contacts[self.desired_leg_pair[1]]:
                 second_desired_foot_contact_reward = 1.0
 
-        feet_contact_reward = first_desired_foot_contact_reward + second_desired_foot_contact_reward
+        feet_contact_reward = (
+            first_desired_foot_contact_reward + second_desired_foot_contact_reward
+        )
 
         # Center Of Mass (COM) Reward
         sigma_com = 0.05
@@ -153,35 +201,45 @@ class NewEnv(QuadrupedEnv):
         foot_b_xy = feet_world[self.desired_leg_pair[1]][:2]
         com_xy = self.com[:2]
         com_offset = self.distance_from_line_2D(foot_a_xy, foot_b_xy, com_xy)
-        center_of_mass_reward = np.exp(-(com_offset ** 2) / (2 * sigma_com ** 2))
+        center_of_mass_reward = np.exp(-(com_offset**2) / (2 * sigma_com**2))
 
-        #Action Rate Penalty
+        # Action Rate Penalty
         current_action = self.mjData.ctrl.copy()
-        if not hasattr(self,"_last_action_for_reward"):
+        if not hasattr(self, "_last_action_for_reward"):
             self._last_action_for_reward = np.zeros_like(current_action)
-        action_rate_penalty = np.sum((current_action - self._last_action_for_reward)**2)/torque_limit**2
-        self._last_action_for_reward = current_action  
+        action_rate_penalty = (
+            np.sum((current_action - self._last_action_for_reward) ** 2)
+            / torque_limit**2
+        )
+        self._last_action_for_reward = current_action
 
         joint_vel = self.mjData.qvel[6:18]
-        joint_velocity_penalty = np.mean(
-            (joint_vel / 10.0) ** 2
-        )
+        joint_velocity_penalty = np.mean((joint_vel / 10.0) ** 2)
 
         return float(
-            0.2 * alive_bonus +
-            1.0 * feet_contact_reward +
-            0.4 * lin_vel_reward +
-            0.2 * ang_vel_reward +
-            1.0 * center_of_mass_reward + 
-            -0.3 * joint_velocity_penalty +
-            -0.2 * roll_pitch_ang_vel_penalty + 
-            -0.2 * torque_penalty +
-            -0.4 * action_rate_penalty
-            )
+            0.2 * alive_bonus
+            + 1.0 * feet_contact_reward
+            + 0.4 * lin_vel_reward
+            + 0.2 * ang_vel_reward
+            + 1.0 * center_of_mass_reward
+            + -0.3 * joint_velocity_penalty
+            + -0.2 * roll_pitch_ang_vel_penalty
+            + -0.2 * torque_penalty
+            + -0.4 * action_rate_penalty
+        )
+
 
 class SB3QuadrupedWrapper(gym.Wrapper):
-    def __init__(self, env, obs_keys, pid=None, action_scale=0.3, decimation=4,
-                 max_episode_steps=2000, termination_penalty=0.0):
+    def __init__(
+        self,
+        env,
+        obs_keys,
+        pid=None,
+        action_scale=0.3,
+        decimation=4,
+        max_episode_steps=2000,
+        termination_penalty=0.0,
+    ):
         super().__init__(env)
         self.obs_keys = list(obs_keys)
         self.pid = pid if pid is not None else PIDController()
@@ -198,56 +256,40 @@ class SB3QuadrupedWrapper(gym.Wrapper):
         first_obs = self._add_imitation_obs(first_obs)
 
         self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=self._flatten(first_obs).shape, dtype=np.float32)
-        self.action_space = gym.spaces.Box(low=-100.0, high=100.0, shape=(12,), dtype=np.float32)
+            low=-np.inf,
+            high=np.inf,
+            shape=self._flatten(first_obs).shape,
+            dtype=np.float32,
+        )
+        self.action_space = gym.spaces.Box(
+            low=-100.0, high=100.0, shape=(12,), dtype=np.float32
+        )
 
     def _add_imitation_obs(self, obs):
         if isinstance(obs, dict):
             obs = obs.copy()
 
-            q_policy = np.asarray(
-                obs["qpos_js"],
-                dtype=np.float32
-            )
+            q_policy = np.asarray(obs["qpos_js"], dtype=np.float32)
 
-            dq_policy = np.asarray(
-                obs["qvel_js"],
-                dtype=np.float32
-            )
+            dq_policy = np.asarray(obs["qvel_js"], dtype=np.float32)
 
-            obs["constants"] = np.zeros(
-                3,
-                dtype=np.float32
-            )
+            obs["constants"] = np.zeros(3, dtype=np.float32)
 
             obs["base_ang_vel:base"] = (
-                np.asarray(
-                    self.env.unwrapped.mjData.qvel[3:6],
-                    dtype=np.float32
-                )
-                * 0.25
+                np.asarray(self.env.unwrapped.mjData.qvel[3:6], dtype=np.float32) * 0.25
             )
 
             obs["gravity_vector:base"] = np.asarray(
-                self.env.unwrapped.gravity_vector,
-                dtype=np.float32
+                self.env.unwrapped.gravity_vector, dtype=np.float32
             ).copy()
 
-            obs["velocity_cmd"] = (
-                self._velocity_cmd
-                * np.array(
-                    [2.0, 2.0, 0.25],
-                    dtype=np.float32
-                )
+            obs["velocity_cmd"] = self._velocity_cmd * np.array(
+                [2.0, 2.0, 0.25], dtype=np.float32
             )
 
-            obs["qpos_js"] = (
-                q_policy - self.pid.q_stand
-            )
+            obs["qpos_js"] = q_policy - self.pid.q_stand
 
-            obs["qvel_js"] = (
-                dq_policy * 0.05
-            )
+            obs["qvel_js"] = dq_policy * 0.05
 
             obs["last_action"] = self._last_action.copy()
 
@@ -256,7 +298,11 @@ class SB3QuadrupedWrapper(gym.Wrapper):
     def _flatten(self, obs) -> NDArray:
         if isinstance(obs, dict):
             return np.concatenate(
-                [np.atleast_1d(obs[k]).astype(np.float32).ravel() for k in self.obs_keys])
+                [
+                    np.atleast_1d(obs[k]).astype(np.float32).ravel()
+                    for k in self.obs_keys
+                ]
+            )
         return np.asarray(obs, dtype=np.float32).ravel()
 
     def _raw_reset(self, **kwargs):
@@ -277,16 +323,9 @@ class SB3QuadrupedWrapper(gym.Wrapper):
         return self._flatten(obs), info
 
     def step(self, action):
-        action = np.clip(
-            np.asarray(action, dtype=np.float32),
-            -100.0,
-            100.0
-        )
+        action = np.clip(np.asarray(action, dtype=np.float32), -100.0, 100.0)
 
-        q_des = (
-            self.pid.q_stand
-            + self.action_scale * action
-        )
+        q_des = self.pid.q_stand + self.action_scale * action
 
         mj_data = self.env.unwrapped.mjData
 
@@ -297,15 +336,9 @@ class SB3QuadrupedWrapper(gym.Wrapper):
             q = mj_data.qpos[7:19]
             dq = mj_data.qvel[6:18]
 
-            torque = self.pid.get_action(
-                q,
-                dq,
-                q_des
-            )
+            torque = self.pid.get_action(q, dq, q_des)
 
-            obs, reward, terminated, truncated, info = (
-                self.env.step(torque)
-            )
+            obs, reward, terminated, truncated, info = self.env.step(torque)
 
             total_reward += float(reward)
 
@@ -319,12 +352,7 @@ class SB3QuadrupedWrapper(gym.Wrapper):
         flat_obs = self._flatten(obs)
 
         if not np.all(np.isfinite(flat_obs)):
-            flat_obs = np.nan_to_num(
-                flat_obs,
-                nan=0.0,
-                posinf=0.0,
-                neginf=0.0
-            )
+            flat_obs = np.nan_to_num(flat_obs, nan=0.0, posinf=0.0, neginf=0.0)
             terminated = True
 
         reward = total_reward / self.decimation
@@ -334,10 +362,7 @@ class SB3QuadrupedWrapper(gym.Wrapper):
 
         self._elapsed_steps += 1
 
-        if (
-            self._elapsed_steps >= self.max_episode_steps
-            and not terminated
-        ):
+        if self._elapsed_steps >= self.max_episode_steps and not terminated:
             truncated = True
 
         # -----------------------------------------------------
@@ -347,23 +372,13 @@ class SB3QuadrupedWrapper(gym.Wrapper):
         if isinstance(info, dict):
             info = info.copy()
 
-            invalid_contacts = info.pop(
-                "invalid_contacts",
-                None
-            )
+            invalid_contacts = info.pop("invalid_contacts", None)
 
             if invalid_contacts is not None:
-                info["invalid_contact_count"] = len(
-                    invalid_contacts
-                )
+                info["invalid_contact_count"] = len(invalid_contacts)
 
-        return (
-            flat_obs,
-            reward,
-            bool(terminated),
-            bool(truncated),
-            info
-        )
+        return (flat_obs, reward, bool(terminated), bool(truncated), info)
+
 
 if __name__ == "__main__":
     print("This file defines the environment and is meant to be imported")
