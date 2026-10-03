@@ -23,21 +23,22 @@ ACTION_SCALE = 0.3
 DECIMATION = 10
 TERMINATION_PENALTY = 300
 
-CHECKPOINT_DIR = "./src/policies/trained_policies/"
+CHECKPOINT_DIR = "./src/policies/final_policies/"
 TENSORBOARD_DIR = "./src/go2_stand_up/tensor"
 
+BALANCE_POINTS = LegPairs.FR_RL.value
 
-def make_env(balance_points:int = 0):
+def make_env():
     env = create_env(
         type="base",
         scene="flat",
         state_obs_names="full_state",
-        balance_points=balance_points
+        balance_points=BALANCE_POINTS
     )
     env = SB3QuadrupedWrapper(
         env,
         obs_keys=FULL_STATE_OBS,
-        pid=PIDController(balance_points=balance_points),
+        pid=PIDController(balance_points=BALANCE_POINTS),
         action_scale=ACTION_SCALE,
         decimation=DECIMATION,
         max_episode_steps=EPISODE_LENGTH,
@@ -96,17 +97,17 @@ def load_test(num_of_steps: int, steps: int = 2000):
     base_vec = DummyVecEnv([make_env])
     base_vec.envs[0].unwrapped.ASSIST_START = 0.0
     vec_env = VecNormalize.load(
-        f"{CHECKPOINT_DIR}fl_rr_ppo_go2_vecnormalize_{num_of_steps}_steps.pkl", base_vec
+        f"{CHECKPOINT_DIR}fr_rl_ppo_go2_vecnormalize_{num_of_steps}_steps.pkl", base_vec
     )
     vec_env.training = False
     vec_env.norm_reward = False
 
     agent = PPO.load(
-        f"{CHECKPOINT_DIR}fl_rr_ppo_go2_{num_of_steps}_steps", env=vec_env, device="cpu"
+        f"{CHECKPOINT_DIR}fr_rl_ppo_go2_{num_of_steps}_steps", env=vec_env, device="cpu"
     )
     obs = vec_env.reset()
     for _ in range(steps):
-        action, _ = agent.predict(obs, deterministic=False)
+        action, _ = agent.predict(obs, deterministic=True)
         obs, reward, done, info = vec_env.step(action)
         total_rew += reward
         base_vec.envs[0].render()

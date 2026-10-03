@@ -287,7 +287,7 @@ class SB3QuadrupedWrapper(gym.Wrapper):
                 [2.0, 2.0, 0.25], dtype=np.float32
             )
 
-            obs["qpos_js"] = q_policy - self.pid.q_stand
+            obs["qpos_js"] = q_policy - self.pid.q_nominal
 
             obs["qvel_js"] = dq_policy * 0.05
 
@@ -325,7 +325,7 @@ class SB3QuadrupedWrapper(gym.Wrapper):
     def step(self, action):
         action = np.clip(np.asarray(action, dtype=np.float32), -100.0, 100.0)
 
-        q_des = self.pid.q_stand + self.action_scale * action
+        q_des = self.pid.q_nominal + self.action_scale * action
 
         mj_data = self.env.unwrapped.mjData
 
@@ -364,10 +364,6 @@ class SB3QuadrupedWrapper(gym.Wrapper):
 
         if self._elapsed_steps >= self.max_episode_steps and not terminated:
             truncated = True
-
-        # -----------------------------------------------------
-        # Make info compatible with SubprocVecEnv
-        # -----------------------------------------------------
 
         if isinstance(info, dict):
             info = info.copy()

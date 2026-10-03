@@ -5,6 +5,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize, SubprocVecEnv
+from enum import Enum
 
 import numpy as np
 import onnx
@@ -15,6 +16,12 @@ from concurrent.futures import ProcessPoolExecutor
 
 from imitation.algorithms import bc
 from imitation.data import types as imitation_types
+
+class LegPairs(Enum):
+    FL_RR = 0
+    FR_RL = 1
+    FL_FR = 2
+    RL_RR = 3
 
 N_ENVS = 4
 N_EXPERT_WORKERS = 4
@@ -27,14 +34,15 @@ TERMINATION_PENALTY = 500.0
 
 BASE_SEED = 42
 
-CHECKPOINT_DIR = "./src/policies/checkpoint/"
+CHECKPOINT_DIR = "./src/policies/final_policies/"
 TENSORBOARD_DIR = "./src/go2_stand_up/tensor"
-EXPERT_DIR = "./src/policies/pretrained/trot_policy.onnx"
+EXPERT_DIR = "./src/policies/pretrained/handstand_policy.onnx"
 
 BC_DATASET = "./src/policies/checkpoint/expert_demonstrations.npz"
 BC_POLICY = "./src/policies/checkpoint/bc_policy"
 BC_PPO = "./src/policies/checkpoint/bc_ppo"
 
+BALANCE_POINTS = LegPairs.RL_RR.value
 
 def _collect_expert_worker(
     worker_id: int,
@@ -156,84 +164,6 @@ def make_parallel_vec_env(
 
 
 def collect_expert_demonstrations(
-    n_steps: int = 100_000,
-    warmup_steps: int = 75,
-    noise_std: float = 0.0,
-    seed: int = 0,
-):
-    rng = np.random.default_rng(seed)
-    env = make_env()
-
-    session = ort.InferenceSession(
-        EXPERT_DIR,
-        providers=["CPUExecutionProvider"],
-    )
-
-    input_name = session.get_inputs()[0].name
-    output_name = session.get_outputs()[0].name
-
-    obs_buffer = []
-    action_buffer = []
-    info_buffer = []
-
-    def reset_and_settle():
-        obs, info = env.reset()
-        for _ in range(warmup_steps):
-            obs, reward, terminated, truncated, info = env.step(np.zeros(12, dtype=np.float32))
-            if terminated or truncated:
-                obs, info = env.reset()
-
-        return obs
-
-    obs = reset_and_settle()
-
-    for step in range(n_steps):
-        obs_array = np.asarray(obs, dtype=np.float32)
-        assert obs_array.shape == (48,), obs_array.shape
-
-        expert_action = session.run([output_name], {input_name: obs_array[None, :]})[0][0]
-        expert_action = np.asarray(expert_action, dtype=np.float32)
-
-        assert expert_action.shape == (12,)
-
-        obs_buffer.append(obs_array.copy())
-        action_buffer.append(expert_action.copy())
-        info_buffer.append({})
-        executed_action = expert_action.copy()
-
-        if noise_std > 0.0:
-            executed_action += rng.normal(
-                loc=0.0,
-                scale=noise_std,
-                size=12,
-            ).astype(np.float32)
-
-        obs, reward, terminated, truncated, info = env.step(executed_action)
-
-        if (step + 1) % 5000 == 0:
-            print(f"Collected {step + 1}/{n_steps} transitions")
-
-        if terminated or truncated:
-            obs = reset_and_settle()
-
-    env.close()
-    observations = np.asarray(obs_buffer, dtype=np.float32)
-    actions = np.asarray(action_buffer, dtype=np.float32)
-    infos = np.asarray(info_buffer, dtype=object)
-
-    print("\nEXPERT DATASET")
-    print("Observations:", observations.shape)
-    print("Actions:     ", actions.shape)
-    print("Obs min/max: ", observations.min(), observations.max())
-    print("Act min/max: ", actions.min(), actions.max())
-
-    np.savez_compressed(BC_DATASET,obs=observations,acts=actions,)
-    demonstrations = imitation_types.TransitionsMinimal(obs=observations,acts=actions,infos=infos,)
-
-    return demonstrations
-
-
-def collect_expert_demonstrations_parallel(
     total_steps: int = 100_000,
     n_workers: int = N_EXPERT_WORKERS,
     warmup_steps: int = 75,
@@ -464,11 +394,11 @@ def load_render_onnx(steps: int = 5000):
 
 
 def make_env():
-    env = create_env(type="imitation", scene="flat")
+    env = create_env(type="imitation", scene="flat",balance_points=BALANCE_POINTS)
     env = SB3QuadrupedWrapper(
         env,
         obs_keys=IMITATION_OBS,
-        pid=PIDController(),
+        pid=PIDController(balance_points=BALANCE_POINTS),
         action_scale=ACTION_SCALE,
         decimation=DECIMATION,
         max_episode_steps=EPISODE_LENGTH,
@@ -478,66 +408,6 @@ def make_env():
 
 
 def train_bc(
-    demonstrations=None,
-    n_epochs: int = 20,
-):
-    if demonstrations is None:
-        demonstrations = load_expert_demonstrations()
-
-    base_vec = DummyVecEnv([make_env for _ in range(N_ENVS)])
-
-    vec_env = base_vec
-
-    agent = PPO(
-        policy="MlpPolicy",
-        env=vec_env,
-        learning_rate=1e-4,
-        n_steps=4096,
-        batch_size=512,
-        n_epochs=5,
-        gamma=0.99,
-        gae_lambda=0.95,
-        clip_range=0.1,
-        clip_range_vf=None,
-        normalize_advantage=True,
-        ent_coef=0.0,
-        vf_coef=0.5,
-        policy_kwargs=dict(net_arch=dict(pi=[256, 256],vf=[256, 256],)),
-        tensorboard_log=TENSORBOARD_DIR,
-        verbose=1,
-        device="cpu",
-    )
-
-    rng = np.random.default_rng(0)
-
-    bc_trainer = bc.BC(
-        observation_space=vec_env.observation_space,
-        action_space=vec_env.action_space,
-        policy=agent.policy,
-        demonstrations=demonstrations,
-        rng=rng,
-        batch_size=512,
-        ent_weight=1e-4,
-        l2_weight=1e-6,
-        device="cpu",
-    )
-
-    print("BEHAVIORAL CLONING")
-
-    bc_trainer.train(n_epochs=n_epochs,progress_bar=True,)
-
-    bc_trainer.save_policy(BC_POLICY)
-    agent.save(BC_PPO)
-
-    print("\nBC training complete.")
-    print("Saved:")
-    print(" ", BC_POLICY)
-    print(" ", BC_PPO)
-
-    return agent, vec_env
-
-
-def train_bc_parallel(
     demonstrations=None,
     n_epochs: int = 20,
 ):
@@ -602,43 +472,6 @@ def train_bc_parallel(
     return agent, vec_env
 
 
-def train():
-    base_vec = DummyVecEnv([make_env for _ in range(N_ENVS)])
-    vec_env = VecNormalize(base_vec, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
-
-    agent = PPO(
-        policy="MlpPolicy",
-        env=vec_env,
-        learning_rate=3e-4,
-        n_steps=4096,
-        batch_size=512,
-        n_epochs=5,
-        gamma=0.99,
-        gae_lambda=0.95,
-        clip_range=0.2,
-        clip_range_vf=None,
-        normalize_advantage=True,
-        ent_coef=0.01,
-        vf_coef=0.5,
-        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
-        tensorboard_log=TENSORBOARD_DIR,
-        verbose=1,
-        device="cpu",
-    )
-
-    checkpoint_callback = CheckpointCallback(
-        save_freq=max(SAVE_INTERVAL // N_ENVS, 1),
-        save_path=CHECKPOINT_DIR,
-        name_prefix="ppo_go2",
-        save_vecnormalize=True,
-        verbose=2,
-    )
-
-    agent.learn(total_timesteps=MAX_STEPS, callback=checkpoint_callback)
-    agent.save(CHECKPOINT_DIR + "final")
-    vec_env.save(CHECKPOINT_DIR + "final_vecnormalize.pkl")
-
-
 def load_test(num_of_steps: int, steps: int = 2000):
     base_vec = DummyVecEnv([make_env])
     vec_env = VecNormalize.load(
@@ -659,41 +492,6 @@ def load_test(num_of_steps: int, steps: int = 2000):
             break
 
 
-def resume_training(extra_timesteps: int = MAX_STEPS):
-    base_vec = DummyVecEnv([make_env for _ in range(N_ENVS)])
-
-    vec_env = VecNormalize.load(
-        f"{CHECKPOINT_DIR}final_vecnormalize.pkl",
-        base_vec,
-    )
-
-    vec_env.training = True
-    vec_env.norm_reward = True
-
-    agent = PPO.load(
-        f"{CHECKPOINT_DIR}final.zip",
-        env=vec_env,
-        device="cpu",
-    )
-
-    checkpoint_callback = CheckpointCallback(
-        save_freq=max(SAVE_INTERVAL // N_ENVS, 1),
-        save_path=CHECKPOINT_DIR,
-        name_prefix="ppo_go2_resumed",
-        save_vecnormalize=True,
-        verbose=2,
-    )
-
-    agent.learn(
-        total_timesteps=extra_timesteps,
-        callback=checkpoint_callback,
-        reset_num_timesteps=False,
-    )
-
-    agent.save(f"{CHECKPOINT_DIR}final_resumed")
-    vec_env.save(f"{CHECKPOINT_DIR}final_resumed_vecnormalize.pkl")
-
-
 def render_student(
     policy,
     steps: int = 5000,
@@ -701,7 +499,7 @@ def render_student(
 ):
     env = make_env()
 
-    obs, info = env.reset()
+    obs, _ = env.reset()
 
     for _ in range(warmup_steps):
         obs, reward, terminated, truncated, info = env.step(
@@ -740,7 +538,7 @@ def render_student(
 def fine_tune_bc_with_ppo(
     agent,
     vec_env,
-    total_timesteps: int = MAX_STEPS,
+    total_timesteps: int = 150_000,
 ):
 
     checkpoint_callback = CheckpointCallback(
@@ -750,11 +548,12 @@ def fine_tune_bc_with_ppo(
         verbose=2,
     )
 
-    print("\n" + "=" * 70)
     print("PARALLEL PPO FINE-TUNING")
-    print("=" * 70)
     print("Environments:", N_ENVS)
-    print("=" * 70)
+
+    agent.learning_rate = 2e-5
+    agent.target_kl = 0.01
+    agent.ent_coef = 0.0002
 
     agent.learn(
         total_timesteps=total_timesteps,
@@ -763,20 +562,19 @@ def fine_tune_bc_with_ppo(
     )
 
     agent.save(CHECKPOINT_DIR + "final_bc_ppo")
-
     vec_env.close()
 
     return agent
 
 
 if __name__ == "__main__":
-    vec_env = make_parallel_vec_env()
-    load_render_onnx()
-    # agent = PPO.load(f"{CHECKPOINT_DIR}bc_ppo_150000_steps",env = vec_env, device="cpu") #_200000_steps
-    # agent.learning_rate = 2e-5
-    # agent.target_kl = 0.01
-    # agent.ent_coef = 0.0002
-    # render_student(policy=agent)
+    vec_env = make_env()
+    # load_render_onnx()
+    agent = PPO.load(f"{CHECKPOINT_DIR}legstand_bc_ppo_150000_steps",env = vec_env, device="cpu")
+    try:
+        render_student(policy=agent)
+    finally:
+        vec_env.close()
 
     # mp.freeze_support()
 
