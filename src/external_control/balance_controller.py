@@ -12,7 +12,7 @@ POLICIES_DIR = "./src/policies/final_policies/"
 
 class PolicyMatch(Enum):
     FL_RR = "fl_rr_ppo_go2_4400000_steps"
-    FR_RL = "fr_rl_ppo_go2_4400000_steps"
+    FR_RL = "fr_rl_ppo_go2_4300000_steps"
     FL_FR = "handstand_bc_ppo_150000_steps"
     RL_RR = "legstand_bc_ppo"
 
