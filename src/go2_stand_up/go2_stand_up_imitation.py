@@ -44,7 +44,6 @@ def _collect_expert_worker(
     base_seed: int,
 ):
     worker_seed = base_seed + worker_id
-
     rng = np.random.default_rng(worker_seed)
 
     env = make_env()
@@ -53,7 +52,6 @@ def _collect_expert_worker(
         EXPERT_DIR,
         providers=["CPUExecutionProvider"],
     )
-
     input_name = session.get_inputs()[0].name
     output_name = session.get_outputs()[0].name
 
@@ -63,10 +61,6 @@ def _collect_expert_worker(
     done_buffer = []
 
     zero_action = np.zeros(12, dtype=np.float32)
-
-    # ---------------------------------------------------------
-    # Reset + settle into the nominal q_stand pose
-    # ---------------------------------------------------------
 
     def reset_and_settle(seed=None):
         obs, info = env.reset(seed=seed)
@@ -88,10 +82,6 @@ def _collect_expert_worker(
 
     episode_index = 0
 
-    # ---------------------------------------------------------
-    # Collect this worker's shard
-    # ---------------------------------------------------------
-
     for step in range(n_steps):
         obs_array = np.asarray(obs, dtype=np.float32)
 
@@ -100,14 +90,7 @@ def _collect_expert_worker(
                 f"Worker {worker_id}: expected obs (48,), got {obs_array.shape}"
             )
 
-        # -----------------------------------------------------
-        # Expert label for state s_t
-        # -----------------------------------------------------
-
-        expert_action = session.run([output_name], {input_name: obs_array[None, :]})[0][
-            0
-        ]
-
+        expert_action = session.run([output_name], {input_name: obs_array[None, :]})[0][0]
         expert_action = np.asarray(expert_action, dtype=np.float32)
 
         if expert_action.shape != (12,):
@@ -115,23 +98,10 @@ def _collect_expert_worker(
                 f"Worker {worker_id}: expected action (12,), got {expert_action.shape}"
             )
 
-        # Supervised pair:
-        #
-        #     observation_t -> expert_action_t
-
         obs_buffer.append(obs_array.copy())
-
         action_buffer.append(expert_action.copy())
-
-        # -----------------------------------------------------
-        # Execute action
-        # -----------------------------------------------------
-
         executed_action = expert_action.copy()
 
-        # Small noise gives different workers different
-        # trajectories while the expert still supplies labels
-        # for the perturbed states.
         if noise_std > 0.0:
             executed_action += rng.normal(
                 0.0,
@@ -146,9 +116,7 @@ def _collect_expert_worker(
         )
 
         next_obs, reward, terminated, truncated, info = env.step(executed_action)
-
         done = bool(terminated or truncated)
-
         next_obs_array = np.asarray(next_obs, dtype=np.float32)
 
         if next_obs_array.shape != (48,):
@@ -159,50 +127,29 @@ def _collect_expert_worker(
             )
 
         next_obs_buffer.append(next_obs_array.copy())
-
         done_buffer.append(done)
-
-        # -----------------------------------------------------
-        # Continue / reset
-        # -----------------------------------------------------
 
         if done:
             episode_index += 1
-
             obs = reset_and_settle(worker_seed + 1000 + episode_index)
         else:
             obs = next_obs
 
     env.close()
-
     observations = np.asarray(obs_buffer, dtype=np.float32)
-
     actions = np.asarray(action_buffer, dtype=np.float32)
-
     next_observations = np.asarray(next_obs_buffer, dtype=np.float32)
-
     dones = np.asarray(done_buffer, dtype=bool)
-
     print(f"Worker {worker_id}: {len(observations)} demonstrations")
 
-    return (
-        observations,
-        actions,
-        next_observations,
-        dones,
-    )
+    return (observations,actions,next_observations,dones)
 
 
 def make_parallel_vec_env(
     n_envs: int = N_ENVS,
     seed: int = BASE_SEED,
 ):
-
-    vec_env = SubprocVecEnv(
-        [make_env for _ in range(n_envs)],
-        start_method="spawn",
-    )
-
+    vec_env = SubprocVecEnv([make_env for _ in range(n_envs)],start_method="spawn")
     vec_env.seed(seed)
 
     return vec_env
@@ -215,7 +162,6 @@ def collect_expert_demonstrations(
     seed: int = 0,
 ):
     rng = np.random.default_rng(seed)
-
     env = make_env()
 
     session = ort.InferenceSession(
@@ -232,14 +178,8 @@ def collect_expert_demonstrations(
 
     def reset_and_settle():
         obs, info = env.reset()
-
-        # Same idea as the working expert deployment:
-        # settle into q_stand before enabling the expert.
         for _ in range(warmup_steps):
-            obs, reward, terminated, truncated, info = env.step(
-                np.zeros(12, dtype=np.float32)
-            )
-
+            obs, reward, terminated, truncated, info = env.step(np.zeros(12, dtype=np.float32))
             if terminated or truncated:
                 obs, info = env.reset()
 
@@ -249,40 +189,16 @@ def collect_expert_demonstrations(
 
     for step in range(n_steps):
         obs_array = np.asarray(obs, dtype=np.float32)
-
         assert obs_array.shape == (48,), obs_array.shape
 
-        # -----------------------------------------------------
-        # Expert action for CURRENT observation
-        # -----------------------------------------------------
-
-        expert_action = session.run([output_name], {input_name: obs_array[None, :]})[0][
-            0
-        ]
-
+        expert_action = session.run([output_name], {input_name: obs_array[None, :]})[0][0]
         expert_action = np.asarray(expert_action, dtype=np.float32)
 
         assert expert_action.shape == (12,)
 
-        # -----------------------------------------------------
-        # Save supervised pair:
-        #
-        #       obs_t -> expert_action_t
-        # -----------------------------------------------------
-
         obs_buffer.append(obs_array.copy())
-
         action_buffer.append(expert_action.copy())
-
         info_buffer.append({})
-
-        # -----------------------------------------------------
-        # Normally execute the expert action itself.
-        #
-        # Later we can add a SMALL amount of noise to visit
-        # nearby states and improve BC robustness.
-        # -----------------------------------------------------
-
         executed_action = expert_action.copy()
 
         if noise_std > 0.0:
@@ -301,32 +217,18 @@ def collect_expert_demonstrations(
             obs = reset_and_settle()
 
     env.close()
-
     observations = np.asarray(obs_buffer, dtype=np.float32)
-
     actions = np.asarray(action_buffer, dtype=np.float32)
-
     infos = np.asarray(info_buffer, dtype=object)
 
     print("\nEXPERT DATASET")
-    print("=" * 70)
     print("Observations:", observations.shape)
     print("Actions:     ", actions.shape)
     print("Obs min/max: ", observations.min(), observations.max())
     print("Act min/max: ", actions.min(), actions.max())
-    print("=" * 70)
 
-    np.savez_compressed(
-        BC_DATASET,
-        obs=observations,
-        acts=actions,
-    )
-
-    demonstrations = imitation_types.TransitionsMinimal(
-        obs=observations,
-        acts=actions,
-        infos=infos,
-    )
+    np.savez_compressed(BC_DATASET,obs=observations,acts=actions,)
+    demonstrations = imitation_types.TransitionsMinimal(obs=observations,acts=actions,infos=infos,)
 
     return demonstrations
 
@@ -340,20 +242,14 @@ def collect_expert_demonstrations_parallel(
 ):
 
     n_workers = min(n_workers, total_steps)
-
     steps_per_worker = total_steps // n_workers
-
     remainder = total_steps % n_workers
-
     jobs = [steps_per_worker + (1 if i < remainder else 0) for i in range(n_workers)]
 
-    print("\n" + "=" * 70)
     print("PARALLEL EXPERT COLLECTION")
-    print("=" * 70)
     print("Workers:          ", n_workers)
     print("Total transitions:", total_steps)
     print("Worker loads:     ", jobs)
-    print("=" * 70)
 
     ctx = mp.get_context("spawn")
 
@@ -376,19 +272,14 @@ def collect_expert_demonstrations_parallel(
         shards = [future.result() for future in futures]
 
     observations = np.concatenate([shard[0] for shard in shards], axis=0)
-
     actions = np.concatenate([shard[1] for shard in shards], axis=0)
-
     next_observations = np.concatenate([shard[2] for shard in shards], axis=0)
-
     dones = np.concatenate([shard[3] for shard in shards], axis=0)
 
     print("\nFINAL EXPERT DATASET")
-    print("=" * 70)
     print("Observations:", observations.shape)
     print("Actions:     ", actions.shape)
     print("Action range:", actions.min(), actions.max())
-    print("=" * 70)
 
     np.savez_compressed(
         BC_DATASET,
@@ -412,16 +303,12 @@ def collect_expert_demonstrations_parallel(
 
 
 def load_expert_demonstrations():
+
     data = np.load(BC_DATASET, allow_pickle=True)
-
     observations = data["obs"].astype(np.float32)
-
     actions = data["acts"].astype(np.float32)
-
     next_observations = data["next_obs"].astype(np.float32)
-
     dones = data["dones"].astype(bool)
-
     infos = np.asarray([{} for _ in range(len(observations))], dtype=object)
 
     return imitation_types.Transitions(
@@ -449,23 +336,17 @@ def evaluate_bc_action_error(
     obs = demonstrations.obs[idx]
     expert_actions = demonstrations.acts[idx]
 
-    predicted_actions, _ = policy.predict(
-        obs,
-        deterministic=True,
-    )
+    predicted_actions, _ = policy.predict(obs,deterministic=True,)
 
     error = predicted_actions - expert_actions
-
     mse = np.mean(error**2)
     mae = np.mean(np.abs(error))
     max_error = np.max(np.abs(error))
 
     print("\nBC ACTION ERROR")
-    print("=" * 70)
     print(f"MSE:       {mse:.6f}")
     print(f"MAE:       {mae:.6f}")
     print(f"Max error: {max_error:.6f}")
-    print("=" * 70)
 
 
 def inspect_onnx_policy(model_path=EXPERT_DIR):
@@ -481,7 +362,6 @@ def inspect_onnx_policy(model_path=EXPERT_DIR):
     )
 
     print("\nONNX POLICY")
-    print("=" * 70)
 
     print("Inputs:")
     for inp in session.get_inputs():
@@ -491,20 +371,12 @@ def inspect_onnx_policy(model_path=EXPERT_DIR):
     for out in session.get_outputs():
         print(f"  name={out.name}, shape={out.shape}, type={out.type}")
 
-    print("=" * 70)
-
     return session
 
 
 def load_render_onnx(steps: int = 5000):
-    # ---------------------------------------------------------
-    # Create the SAME environment/wrapper used by your policy
-    # ---------------------------------------------------------
     env = make_env()
 
-    # ---------------------------------------------------------
-    # Load ONNX policy
-    # ---------------------------------------------------------
     session = inspect_onnx_policy(EXPERT_DIR)
 
     inputs = session.get_inputs()
@@ -519,16 +391,8 @@ def load_render_onnx(steps: int = 5000):
     input_name = inputs[0].name
     output_name = outputs[0].name
 
-    # ---------------------------------------------------------
-    # Reset environment
-    # ---------------------------------------------------------
     reset_result = env.reset()
 
-    # Gymnasium:
-    # obs, info = env.reset()
-    #
-    # Older Gym:
-    # obs = env.reset()
     if isinstance(reset_result, tuple):
         obs, info = reset_result
     else:
@@ -536,54 +400,31 @@ def load_render_onnx(steps: int = 5000):
         info = {}
 
     print("\nENVIRONMENT")
-    print("=" * 70)
     print("Observation shape:", np.asarray(obs).shape)
     print("Action space:", env.action_space)
     print("Action shape:", env.action_space.shape)
-    print("=" * 70)
 
     expected_obs_shape = inputs[0].shape
 
     print("\nONNX expected input:", expected_obs_shape)
     print("Actual env observation:", np.asarray(obs).shape)
 
-    # ---------------------------------------------------------
-    # Run policy
-    # ---------------------------------------------------------
     for _ in range(100):
         action = np.zeros(12, dtype=np.float32)
         result = env.step(action)
         env.render()
 
     for step in range(steps):
-        # ONNX neural networks normally expect:
-        #
-        #     [batch_size, observation_dimension]
-        #
-        # whereas env.reset()/step() usually returns:
-        #
-        #     [observation_dimension]
         obs_array = np.asarray(obs, dtype=np.float32)
-
         if obs_array.ndim == 1:
             obs_input = obs_array[None, :]
         else:
             obs_input = obs_array
-
-        # -----------------------------------------------------
-        # ONNX inference
-        # -----------------------------------------------------
         action = session.run([output_name], {input_name: obs_input})[0]
-
         action = np.asarray(action, dtype=np.float32)
-
-        # Remove batch dimension
+        
         if action.ndim == 2 and action.shape[0] == 1:
             action = action[0]
-
-        # -----------------------------------------------------
-        # Sanity check
-        # -----------------------------------------------------
         if action.shape != env.action_space.shape:
             raise RuntimeError(
                 "\nONNX action dimension does not match environment.\n"
@@ -591,30 +432,16 @@ def load_render_onnx(steps: int = 5000):
                 f"Environment action shape: {env.action_space.shape}"
             )
 
-        # Optional safety clipping
-        action = np.clip(
-            action,
-            env.action_space.low,
-            env.action_space.high,
-        )
-
-        # -----------------------------------------------------
-        # Environment step
-        # -----------------------------------------------------
+        action = np.clip(action,env.action_space.low,env.action_space.high,)
         result = env.step(action)
 
-        # Gymnasium API
         if len(result) == 5:
             obs, reward, terminated, truncated, info = result
             done = terminated or truncated
 
-        # Older Gym API
         else:
             obs, reward, done, info = result
 
-        # -----------------------------------------------------
-        # Render Go2
-        # -----------------------------------------------------
         env.render()
 
         if step % 100 == 0:
@@ -626,9 +453,7 @@ def load_render_onnx(steps: int = 5000):
 
         if done:
             print(f"Episode finished at step {step}")
-
             reset_result = env.reset()
-
             if isinstance(reset_result, tuple):
                 obs, info = reset_result
             else:
@@ -649,7 +474,7 @@ def make_env():
         max_episode_steps=EPISODE_LENGTH,
         termination_penalty=TERMINATION_PENALTY,
     )
-    return Monitor(env)  # logs ep_rew_mean / ep_len_mean
+    return Monitor(env) 
 
 
 def train_bc(
@@ -677,12 +502,7 @@ def train_bc(
         normalize_advantage=True,
         ent_coef=0.0,
         vf_coef=0.5,
-        policy_kwargs=dict(
-            net_arch=dict(
-                pi=[256, 256],
-                vf=[256, 256],
-            )
-        ),
+        policy_kwargs=dict(net_arch=dict(pi=[256, 256],vf=[256, 256],)),
         tensorboard_log=TENSORBOARD_DIR,
         verbose=1,
         device="cpu",
@@ -702,17 +522,11 @@ def train_bc(
         device="cpu",
     )
 
-    print("\n" + "=" * 70)
     print("BEHAVIORAL CLONING")
-    print("=" * 70)
 
-    bc_trainer.train(
-        n_epochs=n_epochs,
-        progress_bar=True,
-    )
+    bc_trainer.train(n_epochs=n_epochs,progress_bar=True,)
 
     bc_trainer.save_policy(BC_POLICY)
-
     agent.save(BC_PPO)
 
     print("\nBC training complete.")
@@ -736,10 +550,6 @@ def train_bc_parallel(
         policy="MlpPolicy",
         env=vec_env,
         learning_rate=1e-4,
-        # This is PER environment.
-        # With 4 envs:
-        #
-        # 2048 * 4 = 8192 samples / PPO rollout
         n_steps=2048,
         batch_size=512,
         n_epochs=5,
@@ -767,24 +577,18 @@ def train_bc_parallel(
         policy=agent.policy,
         demonstrations=demonstrations,
         rng=np.random.default_rng(BASE_SEED),
-        # Large logical batch
         batch_size=2048,
-        # Process it as smaller minibatches.
         minibatch_size=512,
         ent_weight=1e-4,
         l2_weight=1e-6,
         device="cpu",
     )
 
-    print("\n" + "=" * 70)
     print("BEHAVIORAL CLONING")
-    print("=" * 70)
-
     epoch_counter = {"value": 0}
 
     def save_bc_checkpoint():
         epoch_counter["value"] += 1
-
         agent.save(f"{CHECKPOINT_DIR}bc_epoch_{epoch_counter['value']}")
 
     bc_trainer.train(
@@ -792,7 +596,7 @@ def train_bc_parallel(
         progress_bar=True,
         on_epoch_end=save_bc_checkpoint,
     )
-
+    
     agent.save(BC_PPO)
 
     return agent, vec_env
@@ -800,9 +604,7 @@ def train_bc_parallel(
 
 def train():
     base_vec = DummyVecEnv([make_env for _ in range(N_ENVS)])
-    vec_env = VecNormalize(
-        base_vec, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99
-    )
+    vec_env = VecNormalize(base_vec, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
 
     agent = PPO(
         policy="MlpPolicy",
@@ -901,7 +703,6 @@ def render_student(
 
     obs, info = env.reset()
 
-    # Settle first.
     for _ in range(warmup_steps):
         obs, reward, terminated, truncated, info = env.step(
             np.zeros(12, dtype=np.float32)

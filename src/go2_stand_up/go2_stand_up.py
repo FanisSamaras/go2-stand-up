@@ -3,13 +3,16 @@ from envs.base_env import SB3QuadrupedWrapper
 from internal_control.PID import PIDController
 from numpy import integer, floating
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import (
-    CheckpointCallback,
-    BaseCallback,
-    CallbackList,
-)
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize, SubprocVecEnv
+from enum import Enum
+
+class LegPairs(Enum):
+    FL_RR = 0
+    FR_RL = 1
+    FL_FR = 2
+    RL_RR = 3
 
 
 N_ENVS = 8
@@ -24,31 +27,23 @@ CHECKPOINT_DIR = "./src/policies/trained_policies/"
 TENSORBOARD_DIR = "./src/go2_stand_up/tensor"
 
 
-def make_env():
-    env = create_env()
+def make_env(balance_points:int = 0):
+    env = create_env(
+        type="base",
+        scene="flat",
+        state_obs_names="full_state",
+        balance_points=balance_points
+    )
     env = SB3QuadrupedWrapper(
         env,
         obs_keys=FULL_STATE_OBS,
-        pid=PIDController(),
+        pid=PIDController(balance_points=balance_points),
         action_scale=ACTION_SCALE,
         decimation=DECIMATION,
         max_episode_steps=EPISODE_LENGTH,
         termination_penalty=TERMINATION_PENALTY,
     )
     return Monitor(env)  # logs ep_rew_mean / ep_len_mean
-
-
-class RewardLoggingCallback(BaseCallback):
-    def _on_step(self) -> bool:
-
-        info = self.locals["infos"][0]
-        terms = info.get("reward_terms", {})
-
-        for key, value in terms.items():
-            if isinstance(value, (int, float, integer, floating)):
-                self.logger.record(f"reward_terms/{key}", float(value))
-
-        return True
 
 
 def train():
@@ -86,8 +81,6 @@ def train():
         save_vecnormalize=True,
         verbose=2,
     )
-    reward_logging_callback = RewardLoggingCallback()
-    # agent = PPO.load("src\policies\checkpoint\ppo_go2_1000000_steps.zip",env=vec_env,device="cpu")
 
     agent.learn(
         total_timesteps=MAX_STEPS,
