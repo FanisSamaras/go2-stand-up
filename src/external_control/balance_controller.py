@@ -1,10 +1,4 @@
-import numpy as np
-from numpy.typing import NDArray
 from enum import Enum
-from envs import NewEnv, ImitationEnv
-from go2_stand_up.go2_stand_up import make_env as make_env_base
-# from go2_stand_up import load_base, load_imitation
-from go2_stand_up.go2_stand_up_imitation import make_env as make_env_imitation
 from stable_baselines3 import PPO
 from pathlib import Path
 
@@ -41,7 +35,8 @@ class BalanceController:
         self.seed = seed
         self.env = env
 
-        self.path = Path(self.dir + PolicyMatch(LegPairs(self.balance_points).name))
+        self.path = Path(self.dir + PolicyMatch[LegPairs(self.balance_points).name].value)
+        self.agent = PPO.load(path = self.path, env = self.env, device="cpu")
 
     # def _initialise_env(self):
     #     if self.balance_points in [2,3]:
@@ -56,8 +51,7 @@ class BalanceController:
         self.env.reset(seed = self.seed)
 
     def action(self, observation):
-        agent = PPO.load(path = self.path, env = self.env, device="cpu")
-        action = agent.predict(observation,deterministic=True)
+        action = self.agent.predict(observation,deterministic=True)
         return action
 
     def __str__(self):

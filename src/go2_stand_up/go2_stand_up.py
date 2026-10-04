@@ -95,7 +95,6 @@ def train():
 def load_test(num_of_steps: int, steps: int = 2000):
     total_rew = 0
     base_vec = DummyVecEnv([make_env])
-    base_vec.envs[0].unwrapped.ASSIST_START = 0.0
     vec_env = VecNormalize.load(
         f"{CHECKPOINT_DIR}fr_rl_ppo_go2_vecnormalize_{num_of_steps}_steps.pkl", base_vec
     )

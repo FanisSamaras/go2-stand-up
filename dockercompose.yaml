@@ -1,0 +1,8 @@
+services:
+    
+    demonstrator:
+      build:
+        context: .
+        dockerfile: Dockerfile
+        command: >
+          python ./src/go2_stand_up/go2_demo.py 
