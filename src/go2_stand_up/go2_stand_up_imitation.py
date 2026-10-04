@@ -568,37 +568,37 @@ def fine_tune_bc_with_ppo(
 
 
 if __name__ == "__main__":
-    vec_env = make_env()
-    # load_render_onnx()
-    agent = PPO.load(f"{CHECKPOINT_DIR}legstand_bc_ppo_150000_steps",env = vec_env, device="cpu")
-    try:
-        render_student(policy=agent)
-    finally:
-        vec_env.close()
+    # vec_env = make_env()
+    # # load_render_onnx()
+    # agent = PPO.load(f"{CHECKPOINT_DIR}legstand_bc_ppo_150000_steps",env = vec_env, device="cpu")
+    # try:
+    #     render_student(policy=agent)
+    # finally:
+    #     vec_env.close()
 
-    # mp.freeze_support()
+    mp.freeze_support()
 
-    # demonstrations = collect_expert_demonstrations_parallel(
-    #     total_steps=3_000_000,
-    #     n_workers=N_EXPERT_WORKERS,
-    #     warmup_steps=75,
-    #     noise_std=0.02,
-    # )
+    demonstrations = collect_expert_demonstrations(
+        total_steps=3_000_000,
+        n_workers=N_EXPERT_WORKERS,
+        warmup_steps=75,
+        noise_std=0.02,
+    )
 
-    # demonstrations = load_expert_demonstrations()
+    demonstrations = load_expert_demonstrations()
 
-    # agent, vec_env = train_bc_parallel(
-    #     demonstrations=demonstrations,
-    #     n_epochs=20,
-    # )
+    agent, vec_env = train_bc(
+        demonstrations=demonstrations,
+        n_epochs=20,
+    )
 
-    # evaluate_bc_action_error(
-    #     agent.policy,
-    #     demonstrations,
-    # )
+    evaluate_bc_action_error(
+        agent.policy,
+        demonstrations,
+    )
 
-    # agent = fine_tune_bc_with_ppo(
-    #     agent,
-    #     vec_env,
-    #     total_timesteps=600_000,
-    # )
+    agent = fine_tune_bc_with_ppo(
+        agent,
+        vec_env,
+        total_timesteps=600_000,
+    )
