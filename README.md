@@ -232,14 +232,7 @@ Run the command from the repository root because the policy paths are currently 
 
 ## Results
 
-### Front-Left / Rear-Right 
-<video controls src="assets/FL_RR.mp4" title="Title"></video>
-### Front-Right / Rear-Left 
-<video controls src="assets/FR_RL.mp4" title="Title"></video>
-### Front-Left / Front-Right 
-<video controls src="assets/FL_FR.mp4" title="Title"></video>
-### Rear-Left / Rear-Right 
-<video controls src="assets/RL_RR.mp4" title="Title"></video>
+For the full video results of each configuration go to [assets](assets)
 
 ## References and Acknowledgments
 
