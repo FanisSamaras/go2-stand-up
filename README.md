@@ -1,100 +1,253 @@
-[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#)
-[![NumPy](https://img.shields.io/badge/NumPy-4DABCF?logo=numpy&logoColor=fff)](#)
-[![PyTorch](https://img.shields.io/badge/PyTorch-ee4c2c?logo=pytorch&logoColor=white)](#)
+# Unitree Go2 - Two-Leg Balancing
 
-## Goal-Conditioned Two-Leg Balancing with RL
+![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)
+![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
+![MuJoCo](https://img.shields.io/badge/MuJoCo-Simulation-blue)
+![PPO](https://img.shields.io/badge/RL-PPO-7952B3)
 
-- Fanis Samaras
-- Manos Drakos $^2$
+**Reinforcement learning and imitation learning for two-leg balancing of a Unitree Go2 quadruped in MuJoCo.**
 
-This project is an attempt to train a `Go2-Quadruped` to maintain balance in one of the 4 desired positions using RL. The env used for this project was the [gym-quadruped](https://github.com/iit-DLSLab/gym-quadruped/tree/master), based on the gym environment
+Developed by **Fanis Samaras** and **Manos Drakos**$^2$ as part of the Intelligent Control course.
 
-The 4 desired positions all revolve around the idea of balancing the quadruped only using 2 legs so the desired configurations are:
-1. {FL,RR}
-2. {FR,RL}
-3. {FL,FR}
-4. {RL,RR}
+## Overview
 
-### Diagonal balance points
-----
+This project explores learning-based control strategies for balancing a simulated Unitree Go2 quadruped on only two of its four legs.
 
-For the diagonal balance points since they were the "easier" configuration of the 2, we used Residual Learning combined with SB3's implementation of the PPO algorithm. 
-$$action = q_{nominal} + rl_{action} * action\ scale$$
+The objective is to maintain a stationary, dynamically balanced posture across four distinct support configurations, while minimizing undesired body motion, unnecessary contacts, and excessive control effort.
 
-For the training we used a slightly different $q_{nominal}$ since it would be hard to discover the balancing positions all on it's own, we gave it a starting position with it's `undesired_legs` already slightly lifted from the ground 
+We investigate two complementary approaches:
 
-### Handstand and (leg)stand balance points
-----
+- **Residual Reinforcement Learning:** PPO-based policies that learn corrections to nominal joint configurations for diagonal balancing.
+- **Behavioral Cloning:** Imitation of pretrained expert policies for front- and rear-leg balancing, with optional PPO fine-tuning.
 
-Since there are already plenty of developed projects tackling these 2 configurations, we decided to use behavioral cloning. We used some onnx [pretrained policies](https://github.com/Renkunzhao/legged_rl_deploy/tree/master/policies/go2/My_unitree_go2_gym) in combination with the imitation library, since it is compatible with SB3. The program then loads and samples **observation - action** pairs of an "expert" policy, and trains our PPO policy via supervised learning using the imitation bc algorithm. 
+The project uses the [gym-quadruped](https://github.com/iit-DLSLab/gym-quadruped) environment, built on MuJoCo, and Stable-Baselines3 for reinforcement learning.
 
-Note that we can further train the policy *explicitly* with PPO, to limit any undesired expert behaviors. In our demo, we attempted to limit the imitated gait
+### Design Decisions: From a Unified Policy to Configuration-Specific Controllers
 
-### Reward function Design
-----
+Our initial objective was to develop a single goal-conditioned reinforcement learning policy capable of balancing the Unitree Go2 across all four two-leg support configurations.
 
-For all 4 configurations the key concepts of what should be rewarded/punished remain pretty similar. Since we wanted for the robot to balance around a stationary position the task gets simplified.
+However, learning a unified control strategy proved challenging due to the substantially different balancing requirements of each configuration. In particular, the policy had to learn distinct joint configurations and stabilization behaviors while simultaneously optimizing across multiple balancing objectives.
 
-Rewards:
+To make the problem more tractable, we adopted a modular approach consisting of four independently trained policies, one for each support configuration.
 
-$$r_{rewards} = r_{\text{height}} + r_{\text{leg1/2height}} + r_{\text{correct stance}} + r_{\text{CoM}}$$
+For the diagonal configurations (FL–RR and FR–RL), we used residual reinforcement learning with PPO. For the front and rear-leg configurations (FL–FR and RL–RR), we used behavioral cloning from pretrained expert policies, with the option of subsequent PPO fine-tuning.
 
+This approach allowed us to focus on the individual control challenges of each configuration rather than requiring a single policy to solve all four tasks simultaneously.
 
-Penalties:
+**A unified goal-conditioned policy remains a natural direction for future work.**
 
-$$r_{penalties} = c_{\text{lin/ang vel}} + c_{\text{u1/u2 contact}} + c_{\text{knee contact}} + c_{\text{d1/d2 vel}}$$
+## Balancing Configurations
 
+The robot is trained to balance using the following support-leg combinations:
 
-Stabilizing terms:
+| Configuration | Supporting Legs | Learning Approach |
+|---|---|---|
+| FL–RR | Front Left + Rear Right | Residual RL (PPO) |
+| FR–RL | Front Right + Rear Left | Residual RL (PPO) |
+| FL–FR | Front Left + Front Right | Behavioral Cloning |
+| RL–RR | Rear Left + Rear Right | Behavioral Cloning |
 
-$$r_{\text{stabilizing terms}} = c_{torque} + c_{stomp} + c_{\text{action rate}} + c_{work}$$
+Each configuration presents different stability and control challenges due to the geometry of the support line and the resulting constraints on the robot's center of mass.
 
-Final Reward:
+![](assets/demo.gif)
 
-$$r_d = r_{rewards} - r_{penalties} - r_{\text{stabilizing terms}}$$
+## Methodology
 
-Where $d_1,d_2$ and $u_1,u_2$ are the desired and undesired legs respectively.
+### 1. Diagonal Balancing — Residual Reinforcement Learning
 
-It is also really crucial for the stabilization of the quadruped that the Center of Mass (CoM) is over the support line drawn between it's 2 balance points (desired feet) hence the CoM reward term
+For the two diagonal configurations, we use Proximal Policy Optimization (PPO), implemented through Stable-Baselines3.
 
-## Requirements
+Rather than learning joint targets entirely from scratch, the policy learns residual corrections around a predefined nominal joint configuration.
 
-- python-3.11 (up to 3.13 for python 3.14 and above there seems to be issues with some dependencies)
-- uv (not necessary but provides the most seamless installation process)
+The desired joint positions are calculated as:
+
+$$
+q_{\mathrm{des}} = q_{\mathrm{nominal}} + \alpha \pi_\theta(s)
+$$
+
+where:
+
+- $q_{\mathrm{nominal}}$ represents the nominal joint configuration.
+- $\pi_\theta(s)$ is the action produced by the learned policy.
+- $\alpha$ is the action scaling factor.
+- $q_{\mathrm{des}}$ represents the resulting desired joint positions.
+
+To facilitate exploration, we modify the nominal pose so that the two non-supporting legs are already slightly elevated.
+
+This provides the policy with an initial configuration closer to the target balancing posture, reducing the difficulty of discovering useful behaviors through random exploration.
+
+### 2. Front and Rear Balancing — Behavioral Cloning
+
+For the front-leg and rear-leg configurations, we employ behavioral cloning to leverage existing expert policies.
+
+We use pretrained ONNX policies from the [legged_rl_deploy](https://github.com/Renkunzhao/legged_rl_deploy/tree/master/policies/go2/My_unitree_go2_gym) project.
+
+The expert policies are executed in simulation to collect observation-action pairs:
+
+$$
+\mathcal{D} = \{(s_i,a_i)\}_{i=1}^{N}
+$$
+
+These demonstrations are then used to train a student policy through supervised learning using the `imitation` library, which integrates with Stable-Baselines3.
+
+The behavioral cloning objective is to reproduce the expert's actions from the corresponding observations.
+
+Following imitation learning, the resulting policy can be further optimized using PPO.
+
+This allows us to modify the learned behavior through task-specific rewards, such as discouraging unwanted gait motion while maintaining balance.
+
+### 3. Joint-Level PD Control
+
+The learned policies generate desired joint positions rather than directly applying actuator torques.
+
+These position targets are converted into joint torques using a proportional-derivative (PD) controller:
+
+$$
+\tau = K_p(q_{\mathrm{des}}-q)-K_d\dot q
+$$
+
+where:
+
+- $\tau$ is the commanded joint torque.
+- $K_p$ and $K_d$ are proportional and derivative gains.
+- $q$ and $\dot q$ are the measured joint positions and velocities.
+- $q_{\mathrm{des}}$ and $\dot q_{\mathrm{des}}$ are the desired joint positions and velocities.
+
+This architecture separates high-level learned behavior from low-level joint tracking.
+
+The RL policy learns which joint configurations support balance, while the PD controller provides corrective torques to track those configurations.
+
+## Reward Function Design
+
+All four balancing tasks share a common reward design philosophy: encourage stable two-leg support while penalizing unwanted motion, contact violations, and excessive control effort.
+
+### Positive Rewards
+
+$$
+r_{\mathrm{positive}} =
+r_{\mathrm{height}}+
+r_{\mathrm{leg\ height}}+
+r_{\mathrm{stance}}+
+r_{\mathrm{CoM}}
+$$
+
+These terms encourage:
+
+- Maintaining an appropriate body height.
+- Raising the two non-supporting legs.
+- Preserving the intended support configuration.
+- Keeping the center of mass aligned with the support geometry.
+
+### Motion and Contact Penalties
+
+$$
+c_{\mathrm{motion}} =
+c_{\mathrm{linear/angular\ velocity}}+
+c_{\mathrm{unwanted\ contact}}+
+c_{\mathrm{knee\ contact}}+
+c_{\mathrm{support\ leg\ velocity}}
+$$
+
+These terms discourage unnecessary movement, unintended foot or knee contacts, and instability.
+
+### Control Regularization
+
+$$
+c_{\mathrm{control}} =
+c_{\mathrm{torque}}+
+c_{\mathrm{stomp}}+
+c_{\mathrm{action\ rate}}+
+c_{\mathrm{work}}
+$$
+
+These penalties discourage excessive actuator effort, abrupt contact behavior, rapid action changes, and unnecessary mechanical work.
+
+### Final Reward
+
+$$
+r = r_{\mathrm{positive}}-c_{\mathrm{motion}}-c_{\mathrm{control}}
+$$
+
+The relative weighting of individual terms can be adjusted according to the balancing configuration.
+
+### Center of Mass and Support Geometry
+
+A central challenge of two-leg balancing is maintaining the robot's center of mass relative to the support line connecting the two supporting feet.
+
+The CoM reward encourages the horizontal projection of the robot's center of mass to remain close to this line.
+
+This is a useful geometric objective for maintaining balance, although dynamic stability also depends on velocities, angular momentum, and contact forces.
 
 ## Installation
 
-Clone the repository to your device
+### Requirements
+
+- Python 3.11–3.13
+- [uv](https://docs.astral.sh/uv/) (recommended)
+
+### Clone the Repository
 
 ```bash
-cd <your/preferred/workspace/dir>
-git clone https://github.com/FanisSamaras/go2-stand-up
+git clone https://github.com/FanisSamaras/go2-stand-up.git
+cd go2-stand-up
 ```
 
-We recommend creating a virtual env (venv) 
+### Install with uv (Recommended)
 
-With uv:
 ```bash
-uv sync 
+uv sync
 ```
-And it will automatically spin up the new env with the correct python version and dependencies
 
-with pip:
+This creates a project environment and installs the dependencies specified in `pyproject.toml` and `uv.lock`.
+
+### Alternative: pip
+
+
 ```bash
-python3 -m venv <desired_venv_name>
-# activate the virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+On Windows, the activation command differs.
 
-The project comes with 4 pre-trained policies each corresponding to one of the 4 aforementioned leg configurations. It also includes a simple demo file along with a specialized controller that works for each of the desired configurations
+## Running the Demo
 
-To run the demo 
+The repository includes four pretrained policies and a demonstration script.
+
+Choose one of the supported configurations:
 
 ```bash
-cd ./your_workspace/
-python3 ./src/go2_stand_up/go2_demo.py <arg> 
-# args = {FL_RR, FR_RL, FL_FR, RL_RR}
+uv run python src/go2_stand_up/go2_demo.py FL_RR
 ```
 
-The paths to load the polices are all relative so it's important to be in the correct directory.
+Available options:
+
+- `FL_RR` — Diagonal balancing
+- `FR_RL` — Diagonal balancing
+- `FL_FR` — Front-leg balancing
+- `RL_RR` — Rear-leg balancing
+
+Run the command from the repository root because the policy paths are currently relative.
+
+## Results
+
+### Front-Left / Rear-Right 
+<video controls src="assets/FL_RR.mp4" title="Title"></video>
+### Front-Right / Rear-Left 
+<video controls src="assets/FR_RL.mp4" title="Title"></video>
+### Front-Left / Front-Right 
+<video controls src="assets/FL_FR.mp4" title="Title"></video>
+### Rear-Left / Rear-Right 
+<video controls src="assets/RL_RR.mp4" title="Title"></video>
+
+## References and Acknowledgments
+
+This project builds upon the following open-source tools and research implementations:
+
+- [gym-quadruped](https://github.com/iit-DLSLab/gym-quadruped) — Quadruped simulation environment.
+- [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) — PPO implementation.
+- [imitation](https://github.com/HumanCompatibleAI/imitation) — Behavioral cloning framework.
+- [legged_rl_deploy](https://github.com/Renkunzhao/legged_rl_deploy) — Pretrained expert policies.
+
+**Authors:** Fanis Samaras and Manos Drakos $^2$.
