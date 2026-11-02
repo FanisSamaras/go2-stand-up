@@ -103,7 +103,7 @@ The learned policies generate desired joint positions rather than directly apply
 These position targets are converted into joint torques using a proportional-derivative (PD) controller:
 
 $$
-\tau = K_p(q_{\mathrm{des}}-q)-K_d\dot q
+\tau = K_p(q_{\mathrm{des}}-q) - K_d\dot q
 $$
 
 where:
@@ -111,7 +111,7 @@ where:
 - $\tau$ is the commanded joint torque.
 - $K_p$ and $K_d$ are proportional and derivative gains.
 - $q$ and $\dot q$ are the measured joint positions and velocities.
-- $q_{\mathrm{des}}$ and $\dot q_{\mathrm{des}}$ are the desired joint positions and velocities.
+- $q_{\mathrm{des}}$ are the desired joint positions.
 
 This architecture separates high-level learned behavior from low-level joint tracking.
 
